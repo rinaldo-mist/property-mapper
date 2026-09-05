@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Peta fasilitas Sedayu City, Jakarta Garden City, Kota Harapan Indah, dan Metland Menteng." />
+  <title>Facility Map — 4 Townships</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <header class="brand">
+        <div class="brand-mark">FM</div>
+        <div>
+          <h1>Facility Map</h1>
+          <p>East Jakarta & Bekasi</p>
+        </div>
+        <button class="icon-button mobile-close" id="closeSidebar" aria-label="Tutup panel">×</button>
+      </header>
+
+      <section class="control-section">
+        <label class="search-wrap" for="searchInput">
+          <span>⌕</span>
+          <input id="searchInput" type="search" placeholder="Cari fasilitas..." autocomplete="off" />
+        </label>
+      </section>
+
+      <section class="control-section">
+        <div class="section-heading">
+          <h2>Developer</h2>
+          <button id="showAllDevelopers" class="text-button">Tampilkan semua</button>
+        </div>
+        <div class="developer-list" id="developerList"></div>
+      </section>
+
+      <section class="control-section">
+        <div class="section-heading">
+          <h2>Kategori</h2>
+          <span id="visibleCount">0 titik</span>
+        </div>
+        <div class="category-list" id="categoryList"></div>
+      </section>
+
+      <section class="results-section">
+        <div class="section-heading">
+          <h2>Daftar fasilitas</h2>
+        </div>
+        <div class="result-list" id="resultList"></div>
+      </section>
+
+      <footer>
+        <button class="admin-button" id="addPinButton">＋ Tambah pin manual</button>
+        <span class="storage-note"><span class="status-dot"></span>Pin manual tersimpan di browser ini</span>
+      </footer>
+    </aside>
+
+    <section class="map-area">
+      <div id="map" aria-label="Peta fasilitas empat kawasan"></div>
+      <div class="topbar">
+        <button class="icon-button menu-button" id="openSidebar" aria-label="Buka panel">☰</button>
+        <div class="title-block">
+          <span class="eyebrow">COMPETITOR & MR FACILITY MAPPING</span>
+          <strong id="mapTitle">Semua kawasan</strong>
+        </div>
+        <button class="map-action" id="fitMap">⌖ <span>Lihat semua</span></button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="add-mode hidden" id="addMode"><strong>Klik lokasi pin baru di peta</strong><button id="cancelAddMode">Batal</button></div>
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <strong>Memuat peta fasilitas</strong>
+        <span>Membaca data KMZ…</span>
+      </div>
+      <div class="error-card hidden" id="errorCard">
+        <strong>Peta belum dapat dimuat</strong>
+        <span>Periksa koneksi lalu muat ulang halaman.</span>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="pin-dialog" id="pinDialog">
+    <form id="pinForm">
+      <div class="dialog-head"><div><span class="eyebrow">PIN MANUAL</span><h2 id="dialogTitle">Tambah fasilitas</h2></div><button type="button" class="dialog-close" id="closePinDialog" aria-label="Tutup">×</button></div>
+      <input type="hidden" id="pinId" />
+      <label>Nama fasilitas<input id="pinName" required maxlength="100" placeholder="Contoh: Dealer ABC" /></label>
+      <div class="form-grid"><label>Developer<select id="pinArea" required></select></label><label>Kategori<select id="pinCategory" required></select></label></div>
+      <div class="form-grid"><label>Latitude<input id="pinLat" type="number" step="any" required /></label><label>Longitude<input id="pinLng" type="number" step="any" required /></label></div>
+      <label>Logo pin (opsional, maksimum 500 KB)<input id="pinLogo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" /></label>
+      <div class="logo-row"><span class="logo-preview" id="logoPreview">Tanpa logo</span><button type="button" class="text-button" id="removeLogo">Hapus logo</button></div>
+      <div class="dialog-actions"><button type="button" class="danger-button hidden" id="deletePin">Hapus pin</button><span></span><button type="button" class="secondary-button" id="cancelPin">Batal</button><button type="submit" class="primary-button">Simpan pin</button></div>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
