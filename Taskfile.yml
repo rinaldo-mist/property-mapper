@@ -1,0 +1,113 @@
+# go-task (https://taskfile.dev) — `make` is not installed on Windows by default.
+#   go install github.com/go-task/task/v3/cmd/task@latest
+version: "3"
+
+dotenv: [".env"]
+
+vars:
+  API: "{{.TASKFILE_DIR}}/api"
+  WEB: "{{.TASKFILE_DIR}}/web"
+  KMZ: "{{.TASKFILE_DIR}}/data/facility-mapping.kmz"
+
+tasks:
+  default:
+    cmd: task --list
+    silent: true
+
+  # ── database ────────────────────────────────────────────────────────────────
+  db-up:
+    desc: Start the local PostGIS container
+    cmd: docker compose -f deploy/docker-compose.yml up -d postgres
+
+  db-down:
+    desc: Stop the local database (keeps the volume)
+    cmd: docker compose -f deploy/docker-compose.yml down
+
+  db-reset:
+    desc: Destroy the local database volume and start clean
+    cmds:
+      - docker compose -f deploy/docker-compose.yml down -v
+      - task: db-up
+      - task: migrate-up
+
+  psql:
+    desc: Open a psql shell in the container
+    cmd: docker compose -f deploy/docker-compose.yml exec postgres psql -U mapper -d mapper
+
+  # ── migrations ──────────────────────────────────────────────────────────────
+  migrate-up:
+    desc: Apply all pending migrations
+    dir: "{{.API}}"
+    cmd: go run ./cmd/pmctl migrate up
+
+  migrate-down:
+    desc: Roll back one migration
+    dir: "{{.API}}"
+    cmd: go run ./cmd/pmctl migrate down
+
+  migrate-status:
+    dir: "{{.API}}"
+    cmd: go run ./cmd/pmctl migrate status
+
+  sqlc:
+    desc: Regenerate typed queries from db/migrations + internal/store/queries
+    dir: "{{.API}}"
+    cmd: go tool sqlc generate
+
+  # ── data ────────────────────────────────────────────────────────────────────
+  import:
+    desc: Import the KMZ into Postgres (idempotent)
+    dir: "{{.API}}"
+    cmd: go run ./cmd/pmctl import --file {{.KMZ}}
+
+  admin:
+    desc: 'Create an admin user: task admin -- admin@example.com'
+    dir: "{{.API}}"
+    cmd: go run ./cmd/pmctl admin create --email {{.CLI_ARGS}}
+
+  # ── run ─────────────────────────────────────────────────────────────────────
+  api:
+    desc: Run the Go API with live reload off (fast enough without)
+    dir: "{{.API}}"
+    cmd: go run ./cmd/server
+
+  web:
+    desc: Run the Next.js dev server
+    dir: "{{.WEB}}"
+    cmd: npm run dev
+
+  legacy:
+    desc: Serve the pre-refactor app on :5000 as a visual baseline
+    cmd: npx --yes serve legacy -l 5000
+
+  # ── quality ─────────────────────────────────────────────────────────────────
+  test:
+    desc: Unit tests (no Docker required)
+    cmds:
+      - dir: "{{.API}}"
+        cmd: go test ./... -short -race
+      - dir: "{{.WEB}}"
+        cmd: npm test
+
+  test-int:
+    desc: Integration tests (spins up PostGIS via testcontainers)
+    dir: "{{.API}}"
+    cmd: go test ./... -race
+
+  lint:
+    cmds:
+      - dir: "{{.API}}"
+        cmd: go tool golangci-lint run
+      - dir: "{{.WEB}}"
+        cmd: npx biome check .
+
+  fmt:
+    cmds:
+      - dir: "{{.API}}"
+        cmd: go tool gofumpt -w .
+      - dir: "{{.WEB}}"
+        cmd: npx biome check --write .
+
+  verify:
+    desc: 'End-to-end smoke against a running API: task verify -- http://localhost:8080'
+    cmd: bash deploy/verify.sh {{.CLI_ARGS}}

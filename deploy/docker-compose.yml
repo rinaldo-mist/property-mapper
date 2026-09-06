@@ -1,0 +1,75 @@
+# Local development stack.
+#
+# Daily inner loop is: `task db-up` here, then run the API and web natively
+# (`task api` / `task web`). Go 1.25 and Node 24 are already installed, and
+# bind-mount file watching into containers on Windows is slow and flaky.
+#
+# The `api` and `web` services exist for prod-parity checks and CI, not for
+# everyday editing: `docker compose --profile full up --build`.
+
+name: property-mapper
+
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: mapper
+      POSTGRES_PASSWORD: mapper
+      POSTGRES_DB: mapper
+    ports:
+      # 5433 on the host, not 5432: this machine already runs a PostgreSQL 18
+      # service on the default port, and silently shadowing someone's existing
+      # database server is a good way to lose an afternoon to a confusing
+      # authentication error.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Extensions are created by goose migration 0001, never by an initdb mount,
+      # so this stack and Neon go through exactly the same code path.
+      test: ["CMD-SHELL", "pg_isready -U mapper -d mapper"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    profiles: ["full"]
+    build:
+      context: ../api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://mapper:mapper@postgres:5432/mapper?sslmode=disable
+      PORT: "8080"
+      APP_ENV: development
+      LOG_LEVEL: debug
+      # Left empty on purpose: the server refuses to boot on a secret under 32
+      # bytes, so the check lives in config.Load() rather than being duplicated
+      # here. A `:?` guard would also break `task db-up`, since compose
+      # interpolates every service regardless of the active profile.
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      AUTH_COOKIE_SECURE: "false"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # distroless has no shell or wget, so the binary self-checks via a flag.
+      test: ["CMD", "/server", "-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    profiles: ["full"]
+    build:
+      context: ../web
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_INTERNAL_URL: http://api:8080
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata: {}

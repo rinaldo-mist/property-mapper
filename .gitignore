@@ -1,0 +1,21 @@
+# env
+.env
+.env.*
+!.env.example
+
+# go
+api/bin/
+*.exe
+coverage.out
+
+# node / next
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel/
+node_modules/
+
+# editors / os
+.DS_Store
+.idea/
+*.local

@@ -1,0 +1,23 @@
+version: "2"
+sql:
+  - engine: postgresql
+    # sqlc reads the goose migrations directly, so the generated structs and the
+    # applied schema can never drift: a column rename breaks the build.
+    schema: db/migrations
+    queries: internal/store/queries
+    gen:
+      go:
+        package: gen
+        out: internal/store/gen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+        overrides:
+          # sqlc has no notion of PostGIS types. The queries never select a
+          # geometry column raw — they project it through ST_X/ST_Y/ST_AsGeoJSON,
+          # so sqlc only ever sees float8 and text. This override is a safety net
+          # for the schema scan itself, which does see `geometry(Point,4326)`.
+          - db_type: "geometry"
+            go_type: "string"
+          - db_type: "geography"
+            go_type: "string"

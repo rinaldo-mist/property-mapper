@@ -1,2 +1,10 @@
-# Auto detect text files and perform LF normalization
 * text=auto
+
+*.kmz binary
+*.kml text eol=lf
+*.go  text eol=lf
+*.sql text eol=lf
+*.sh  text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf

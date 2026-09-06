@@ -1,0 +1,346 @@
+[
+  {
+    "importKey": "jgc:bp-jgc",
+    "name": "BP JGC",
+    "areaKey": "JGC",
+    "categoryKey": "Gas Station",
+    "lat": -6.172261680307001,
+    "lng": 106.9619786738107
+  },
+  {
+    "importKey": "jgc:global-mandiri",
+    "name": "Global Mandiri",
+    "areaKey": "JGC",
+    "categoryKey": "School",
+    "lat": -6.172780274881185,
+    "lng": 106.9630315026261
+  },
+  {
+    "importKey": "jgc:mayapada",
+    "name": "Mayapada",
+    "areaKey": "JGC",
+    "categoryKey": "Hospital",
+    "lat": -6.172579742765257,
+    "lng": 106.9586957942916
+  },
+  {
+    "importKey": "jgc:shell-jgc",
+    "name": "Shell JGC",
+    "areaKey": "JGC",
+    "categoryKey": "Gas Station",
+    "lat": -6.17595726246406,
+    "lng": 106.9561129079355
+  },
+  {
+    "importKey": "jgc:sis-jgc",
+    "name": "SIS JGC",
+    "areaKey": "JGC",
+    "categoryKey": "School",
+    "lat": -6.160716376578073,
+    "lng": 106.9556822489878
+  },
+  {
+    "importKey": "jgc:suzuki-buana-indomobil",
+    "name": "Suzuki Buana Indomobil",
+    "areaKey": "JGC",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.171677330777472,
+    "lng": 106.9586891603773
+  },
+  {
+    "importKey": "khi:altius",
+    "name": "Altius",
+    "areaKey": "KHI",
+    "categoryKey": "Hospital",
+    "lat": -6.154437100000001,
+    "lng": 106.9820636
+  },
+  {
+    "importKey": "khi:astra-daihatsu",
+    "name": "Astra Daihatsu",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.184884578215674,
+    "lng": 106.9747038110594
+  },
+  {
+    "importKey": "khi:astra-isuzu",
+    "name": "Astra Isuzu",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.183505139536817,
+    "lng": 106.9742125605572
+  },
+  {
+    "importKey": "khi:baic",
+    "name": "BAIC",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.193641576170077,
+    "lng": 106.9771271317996
+  },
+  {
+    "importKey": "khi:bp",
+    "name": "BP",
+    "areaKey": "KHI",
+    "categoryKey": "Gas Station",
+    "lat": -6.16964989004288,
+    "lng": 106.9741893274709
+  },
+  {
+    "importKey": "khi:cahaya-harapan",
+    "name": "Cahaya Harapan",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.18423160087539,
+    "lng": 106.9790094027807
+  },
+  {
+    "importKey": "khi:carsome",
+    "name": "Carsome",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.194050070977482,
+    "lng": 106.9771652910186
+  },
+  {
+    "importKey": "khi:cherry-montessori-brighten-high-school",
+    "name": "Cherry Montessori \u0026 Brighten High School",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.17026773415165,
+    "lng": 106.9727244763854
+  },
+  {
+    "importKey": "khi:citroen-gac-aion",
+    "name": "Citroen GAC AION",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.183761226160778,
+    "lng": 106.9745019701652
+  },
+  {
+    "importKey": "khi:eka-hospital",
+    "name": "Eka Hospital",
+    "areaKey": "KHI",
+    "categoryKey": "Hospital",
+    "lat": -6.159363054556987,
+    "lng": 106.9735221590256
+  },
+  {
+    "importKey": "khi:esa-unggul",
+    "name": "Esa Unggul",
+    "areaKey": "KHI",
+    "categoryKey": "University",
+    "lat": -6.158892410242625,
+    "lng": 106.9724227091084
+  },
+  {
+    "importKey": "khi:hondra-prima-khi",
+    "name": "Hondra Prima KHI",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.183211004673488,
+    "lng": 106.97402243488
+  },
+  {
+    "importKey": "khi:hyundai",
+    "name": "Hyundai",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.191495176125464,
+    "lng": 106.9771664219656
+  },
+  {
+    "importKey": "khi:jaecoo",
+    "name": "Jaecoo",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.182928765935184,
+    "lng": 106.9737863278351
+  },
+  {
+    "importKey": "khi:kb-sma-cindera-mata",
+    "name": "KB - SMA Cindera Mata",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.176457687300505,
+    "lng": 106.9819468332301
+  },
+  {
+    "importKey": "khi:pertamina-1",
+    "name": "Pertamina 1",
+    "areaKey": "KHI",
+    "categoryKey": "Gas Station",
+    "lat": -6.185484411970208,
+    "lng": 106.9773139069808
+  },
+  {
+    "importKey": "khi:pertamina-2",
+    "name": "Pertamina 2",
+    "areaKey": "KHI",
+    "categoryKey": "Gas Station",
+    "lat": -6.160174021450398,
+    "lng": 106.9743066328478
+  },
+  {
+    "importKey": "khi:posh-176-unit",
+    "name": "POSH 176 Unit",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.191346790803636,
+    "lng": 106.9770928827271
+  },
+  {
+    "importKey": "khi:pre-k-kindergarten-elementary-sekolah-islam-al-kaffah",
+    "name": "Pre-K, Kindergarten, Elementary Sekolah Islam Al-Kaffah",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.180716518040755,
+    "lng": 106.9784544348858
+  },
+  {
+    "importKey": "khi:quba-islamic-school",
+    "name": "Quba Islamic School",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.178735916414522,
+    "lng": 106.9758632946797
+  },
+  {
+    "importKey": "khi:rs-citra-harapan",
+    "name": "RS Citra Harapan",
+    "areaKey": "KHI",
+    "categoryKey": "Hospital",
+    "lat": -6.185169501343168,
+    "lng": 106.9776255264311
+  },
+  {
+    "importKey": "khi:sds-peachblossoms",
+    "name": "SDS Peachblossoms",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.170190070906144,
+    "lng": 106.972927703447
+  },
+  {
+    "importKey": "khi:smm",
+    "name": "SMM",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.176513151701425,
+    "lng": 106.9737976076241
+  },
+  {
+    "importKey": "khi:smpn-19-bekasi",
+    "name": "SMPN 19 Bekasi",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.175466897278452,
+    "lng": 106.9815731202235
+  },
+  {
+    "importKey": "khi:tk-sd-smp-saint-john",
+    "name": "TK, SD, SMP Saint John",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.177505028544284,
+    "lng": 106.9789436997151
+  },
+  {
+    "importKey": "khi:tk-sd-smp-sma-penabur-harapan-indah",
+    "name": "TK, SD, SMP, SMA Penabur Harapan Indah",
+    "areaKey": "KHI",
+    "categoryKey": "School",
+    "lat": -6.177601485711214,
+    "lng": 106.9738900864348
+  },
+  {
+    "importKey": "khi:vinfast",
+    "name": "Vinfast",
+    "areaKey": "KHI",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.191880747397332,
+    "lng": 106.9771521674217
+  },
+  {
+    "importKey": "metland:john-paul-s-school",
+    "name": "John Paul's School",
+    "areaKey": "Metland",
+    "categoryKey": "School",
+    "lat": -6.17107151736787,
+    "lng": 106.9636865611892
+  },
+  {
+    "importKey": "metland:santo-yoseph",
+    "name": "Santo Yoseph",
+    "areaKey": "Metland",
+    "categoryKey": "School",
+    "lat": -6.181403114627445,
+    "lng": 106.9698443409513
+  },
+  {
+    "importKey": "metland:tk-lintang-harapan",
+    "name": "TK Lintang Harapan",
+    "areaKey": "Metland",
+    "categoryKey": "School",
+    "lat": -6.17802699611728,
+    "lng": 106.9692144608004
+  },
+  {
+    "importKey": "metland:tk-morning-star",
+    "name": "TK Morning Star",
+    "areaKey": "Metland",
+    "categoryKey": "School",
+    "lat": -6.182864845385399,
+    "lng": 106.9667623689426
+  },
+  {
+    "importKey": "sedayu:citroen-sedayu",
+    "name": "Citroen Sedayu",
+    "areaKey": "Sedayu",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.162471455453972,
+    "lng": 106.9299208559096
+  },
+  {
+    "importKey": "sedayu:kia-sedayu",
+    "name": "KIA Sedayu",
+    "areaKey": "Sedayu",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.162226640912399,
+    "lng": 106.9296134873786
+  },
+  {
+    "importKey": "sedayu:mitsubishi-sedayu",
+    "name": "Mitsubishi Sedayu",
+    "areaKey": "Sedayu",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.164891785136356,
+    "lng": 106.92892590834
+  },
+  {
+    "importKey": "sedayu:primaya-sedayu",
+    "name": "Primaya Sedayu",
+    "areaKey": "Sedayu",
+    "categoryKey": "Hospital",
+    "lat": -6.164009254883617,
+    "lng": 106.9294749550475
+  },
+  {
+    "importKey": "sedayu:sis-pre-school",
+    "name": "SIS Pre-school",
+    "areaKey": "Sedayu",
+    "categoryKey": "School",
+    "lat": -6.165138434876091,
+    "lng": 106.9256794739373
+  },
+  {
+    "importKey": "sedayu:suzuki",
+    "name": "Suzuki Sedayu",
+    "areaKey": "Sedayu",
+    "categoryKey": "Showroom Dealer",
+    "lat": -6.1623731895077,
+    "lng": 106.9297654342407
+  }
+]
