@@ -40,10 +40,10 @@
 
       <section class="control-section">
         <div class="section-heading">
-          <h2>Kategori</h2>
+          <h2>Filter</h2>
           <span id="visibleCount">0 titik</span>
         </div>
-        <div class="category-list" id="categoryList"></div>
+        <div class="filter-groups" id="filterGroups"></div>
       </section>
 
       <section class="results-section">
@@ -55,7 +55,9 @@
 
       <footer>
         <button class="admin-button" id="addPinButton">＋ Tambah pin manual</button>
-        <span class="storage-note"><span class="status-dot"></span>Pin manual tersimpan di browser ini</span>
+        <button class="admin-button ghost" id="manageGroupsButton">Kelola kategori</button>
+        <button class="admin-button ghost" id="saveKmzButton">Simpan ke KMZ<span class="dirty-dot hidden" id="kmzDirty" title="Ada perubahan yang belum disimpan"></span></button>
+        <span class="storage-note"><span class="status-dot"></span><span id="storageNote">Perubahan tersimpan di browser ini — simpan ke KMZ untuk dibagikan</span></span>
       </footer>
     </aside>
 
@@ -70,7 +72,8 @@
         <button class="map-action" id="fitMap">⌖ <span>Lihat semua</span></button>
       </div>
       <div class="legend" id="legend"></div>
-      <div class="add-mode hidden" id="addMode"><strong>Klik lokasi pin baru di peta</strong><button id="cancelAddMode">Batal</button></div>
+      <div class="add-mode hidden" id="addMode"><strong id="addModeLabel">Klik lokasi pin baru di peta</strong><button id="cancelAddMode">Batal</button></div>
+      <div class="area-menu hidden" id="areaMenu" role="menu"></div>
       <div class="loading" id="loading">
         <div class="spinner"></div>
         <strong>Memuat peta fasilitas</strong>
@@ -92,7 +95,54 @@
       <div class="form-grid"><label>Latitude<input id="pinLat" type="number" step="any" required /></label><label>Longitude<input id="pinLng" type="number" step="any" required /></label></div>
       <label>Logo pin (opsional, maksimum 500 KB)<input id="pinLogo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" /></label>
       <div class="logo-row"><span class="logo-preview" id="logoPreview">Tanpa logo</span><button type="button" class="text-button" id="removeLogo">Hapus logo</button></div>
+      <div id="pinCustomGroups"></div>
       <div class="dialog-actions"><button type="button" class="danger-button hidden" id="deletePin">Hapus pin</button><span></span><button type="button" class="secondary-button" id="cancelPin">Batal</button><button type="submit" class="primary-button">Simpan pin</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="pin-dialog complex-dialog" id="complexDialog">
+    <form id="complexForm">
+      <div class="dialog-head"><div><span class="eyebrow">PERUMAHAN</span><h2 id="complexDialogTitle">Tambah perumahan</h2></div><button type="button" class="dialog-close" id="closeComplexDialog" aria-label="Tutup">×</button></div>
+      <input type="hidden" id="complexId" />
+      <label>Nama perumahan<input id="complexName" required maxlength="100" placeholder="Contoh: Cluster Alamanda" /></label>
+      <div class="form-grid">
+        <label>Developer<select id="complexArea" required></select></label>
+        <label>Lokasi<span class="latlng-row"><output id="complexLatLng">—</output><button type="button" class="text-button" id="pickComplexLocation">Pilih di peta</button></span></label>
+      </div>
+      <div class="section-heading catalog-head"><h2>Katalog unit</h2><button type="button" class="text-button" id="addCatalogRow">＋ Tambah unit</button></div>
+      <div class="catalog-wrap">
+        <table class="catalog-table">
+          <thead><tr><th>LT (m²)</th><th>LB (m²)</th><th>Harga (miliar)</th><th aria-label="Aksi"></th></tr></thead>
+          <tbody id="catalogBody"></tbody>
+        </table>
+      </div>
+      <p class="form-hint" id="catalogHint"></p>
+      <div id="complexCustomGroups"></div>
+      <div class="dialog-actions"><button type="button" class="danger-button hidden" id="deleteComplex">Hapus perumahan</button><span></span><button type="button" class="secondary-button" id="cancelComplex">Batal</button><button type="submit" class="primary-button" id="saveComplex">Simpan</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="pin-dialog" id="populationDialog">
+    <form id="populationForm">
+      <div class="dialog-head"><div><span class="eyebrow">POPULASI</span><h2 id="populationDialogTitle">Set populasi</h2></div><button type="button" class="dialog-close" id="closePopulationDialog" aria-label="Tutup">×</button></div>
+      <input type="hidden" id="populationArea" />
+      <div class="form-grid">
+        <label>Minimum (jiwa)<input id="populationMin" type="number" min="0" step="1" required /></label>
+        <label>Maksimum (jiwa)<input id="populationMax" type="number" min="0" step="1" /></label>
+      </div>
+      <p class="form-hint">Kosongkan maksimum jika populasi berupa satu angka.</p>
+      <div class="dialog-actions"><button type="button" class="danger-button hidden" id="resetPopulation">Kembalikan dari KMZ</button><span></span><button type="button" class="secondary-button" id="cancelPopulation">Batal</button><button type="submit" class="primary-button">Simpan</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="pin-dialog groups-dialog" id="groupsDialog">
+    <form id="groupsForm">
+      <div class="dialog-head"><div><span class="eyebrow">KATEGORI KUSTOM</span><h2>Kelola kategori</h2></div><button type="button" class="dialog-close" id="closeGroupsDialog" aria-label="Tutup">×</button></div>
+      <p class="form-hint">Setiap kategori menjadi satu grup filter baru di panel kiri.</p>
+      <div id="groupsEditor"></div>
+      <button type="button" class="text-button add-group" id="addGroup">＋ Tambah kategori</button>
+      <p class="form-hint" id="groupsHint"></p>
+      <div class="dialog-actions"><span></span><button type="button" class="secondary-button" id="cancelGroups">Batal</button><button type="submit" class="primary-button" id="saveGroups">Simpan</button></div>
     </form>
   </dialog>
 

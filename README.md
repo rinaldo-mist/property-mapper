@@ -31,9 +31,43 @@ Ganti `data/facility-mapping.kmz` dengan file KMZ baru dan pertahankan nama file
 4. Unggah logo PNG, JPG, WebP, atau SVG jika diperlukan, lalu simpan.
 5. Klik pin manual dan pilih **Edit pin / logo** untuk mengubah atau menghapusnya.
 
-Pin manual dan logo disimpan melalui `localStorage`, sehingga tetap tersedia saat halaman dibuka kembali pada browser dan domain yang sama. Data ini belum tersinkron otomatis ke perangkat atau pengunjung lain; untuk pemakaian bersama diperlukan database atau file data yang dipublikasikan ulang.
+Pin manual dan logo disimpan melalui `localStorage`, sehingga tetap tersedia saat halaman dibuka kembali pada browser dan domain yang sama. Untuk membagikannya ke perangkat atau pengunjung lain, gunakan **Simpan ke KMZ** (lihat di bawah).
 
 Boundary menggunakan garis merah lembut dan area light red dengan transparansi 50%.
+
+## Filter
+
+Panel kiri berisi beberapa grup filter yang berdiri sendiri:
+
+- **Fasilitas** — School, Hospital, Showroom, SPBU, University, dan Perumahan.
+- **Range Harga** — diambil dari katalog unit setiap perumahan (≤ 1 M, 1–2 M, 2–3 M, > 3 M).
+- **Populasi** — atribut kawasan (≤ 10rb, 10–30rb, 30–60rb, > 60rb).
+- Grup buatan sendiri melalui **Kelola kategori**.
+
+Aturannya:
+
+- **Grup tanpa pilihan tidak menyaring apa pun.** Semua chip mati saat halaman dibuka, dan menekan **Reset** mengembalikan satu grup ke keadaan itu.
+- Dalam satu grup pilihan bersifat **ATAU**; antar grup bersifat **DAN**.
+- Tombol **Multi** mengatur apakah satu grup boleh memilih lebih dari satu chip.
+- Titik yang tidak punya nilai pada grup yang sedang menyaring akan disembunyikan. Karena itu memilih salah satu Range Harga menyisakan perumahan saja — fasilitas biasa memang tidak punya harga.
+
+Menekan salah satu developer memfokuskan peta ke kawasan tersebut dengan animasi. Pencarian dan perubahan chip sengaja **tidak** menggeser peta.
+
+## Perumahan dan populasi
+
+Klik kanan di dalam boundary sebuah kawasan untuk membuka menu:
+
+- **Tambah perumahan** — isi nama, pilih lokasi di peta, lalu isi katalog unit (LT, LB, Harga dalam miliar). Minimal satu baris katalog harus terisi lengkap dan lebih besar dari nol sebelum dapat disimpan. Perumahan muncul sebagai pin hijau dan ikut tersaring pada Range Harga.
+- **Set populasi** — mengubah angka populasi kawasan. Nilai asal dari KMZ dapat dikembalikan lewat **Kembalikan dari KMZ**.
+
+## Menyimpan ke KMZ
+
+Semua perubahan langsung tersimpan di `localStorage`. Tombol **Simpan ke KMZ** menuliskannya kembali ke berkas KMZ; titik oranye pada tombol menandakan ada perubahan yang belum disimpan.
+
+- Di Chrome dan Edge berkas asli ditimpa langsung setelah satu kali izin diberikan.
+- Di Firefox dan Safari berkas diunduh, lalu salin sendiri ke folder `data/`.
+
+Data aplikasi ditulis di dalam satu folder `Property Mapper` beserta `ExtendedData` berawalan `pm:`, sehingga struktur, gaya, dan deskripsi asli dari Google Earth tetap utuh dan berkas tetap dapat dibuka di Google Earth.
 
 ## Platform yang cocok
 
