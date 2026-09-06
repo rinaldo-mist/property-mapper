@@ -433,11 +433,6 @@ function renderMap() {
   state.boundaries.filter(b => !state.selectedArea || b.area === state.selectedArea).forEach(b => {
     L.polygon(b.latlngs, { color: '#d45d5d', weight: 2, opacity: .82, fillColor: '#f3a6a6', fillOpacity: .5, dashArray: '7 5' })
       .bindTooltip(AREA_NAMES[b.area], { sticky: true })
-      .on('contextmenu', event => {
-        L.DomEvent.preventDefault(event.originalEvent);
-        L.DomEvent.stopPropagation(event.originalEvent);
-        openAreaMenu(b.area, event.originalEvent);
-      })
       .addTo(boundaryLayer);
   });
   // No per-marker popupopen binding: one delegated listener on the map container
@@ -487,7 +482,14 @@ function renderDeveloperList() {
     const count = allFeatures().filter(f => f.area === key).length;
     const population = formatPopulation(state.areaPopulation[key]);
     const meta = `${count} fasilitas${population ? ` · ${population}` : ''}`;
-    return `<button class="developer-button" data-area="${escapeHtml(key)}"><span class="dev-code">${key === 'Metland' ? 'MTL' : escapeHtml(key)}</span><span>${escapeHtml(label)}<small>${meta}</small></span></button>`;
+    // The populasi control is a sibling, not a child: nesting a button inside a button
+    // is invalid HTML and the inner one would not receive clicks reliably.
+    return `<div class="developer-item">
+      <button class="developer-button" data-area="${escapeHtml(key)}"><span class="dev-code">${key === 'Metland' ? 'MTL' : escapeHtml(key)}</span><span>${escapeHtml(label)}<small>${meta}</small></span></button>
+      <button class="developer-more" data-pop-area="${escapeHtml(key)}" title="Set populasi ${escapeHtml(label)}" aria-label="Set populasi ${escapeHtml(label)}">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+      </button>
+    </div>`;
   }).join('');
 }
 
@@ -614,7 +616,8 @@ function setAddMode(active, target = 'pin') {
   state.addMode = active;
   if (active) state.pickTarget = target;
   document.getElementById('addModeLabel').textContent = target === 'complex'
-    ? 'Klik lokasi perumahan di peta' : 'Klik lokasi pin baru di peta';
+    ? 'Klik lokasi perumahan di dalam boundary kawasan' : 'Klik lokasi pin baru di peta';
+  document.getElementById('addMode').classList.remove('warn');
   document.getElementById('addMode').classList.toggle('hidden', !active);
   document.getElementById('map').classList.toggle('map-picking', active);
 }
@@ -644,6 +647,33 @@ function openPinDialog(feature = null, latlng = null) {
 function closePinDialog() { document.getElementById('pinDialog').close(); }
 
 /* ---------- area context menu ---------- */
+
+// Ray casting over the boundary ring. Hit-testing by geography rather than by DOM target
+// means a right-click still resolves to its township when it lands on a marker, a
+// tooltip, or any other layer stacked above the polygon.
+function pointInRing(latlng, ring) {
+  const x = latlng.lng, y = latlng.lat;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][1], yi = ring[i][0];
+    const xj = ring[j][1], yj = ring[j][0];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// Every township, regardless of the current filter — used to validate a saved location,
+// which must stay correct even while a different area is selected.
+function areaContaining(latlng, boundaries = state.boundaries) {
+  const hit = boundaries.find(b => pointInRing(latlng, b.latlngs));
+  return hit ? hit.area : null;
+}
+
+// Only the boundaries currently drawn, so neither the menu nor pick-mode can resolve to
+// an area the user cannot see.
+function areaAt(latlng) {
+  return areaContaining(latlng, state.boundaries.filter(b => !state.selectedArea || b.area === state.selectedArea));
+}
 
 function openAreaMenu(area, originalEvent) {
   const menu = document.getElementById('areaMenu');
@@ -698,11 +728,21 @@ function validateComplexForm() {
   const rows = readCatalogRows();
   const complete = completeCatalogRows(rows);
   const named = document.getElementById('complexName').value.trim().length > 0;
-  const located = Array.isArray(state.complexDraft.latlng);
+  const latlng = state.complexDraft.latlng;
+  const located = Array.isArray(latlng);
+  const chosenArea = document.getElementById('complexArea').value;
+  // Checked against every boundary, not just the drawn ones, so editing a complex while
+  // a different area is filtered does not falsely fail.
+  const containing = located ? areaContaining({ lat: latlng[0], lng: latlng[1] }) : null;
   const hint = document.getElementById('catalogHint');
   let message = '';
   if (!named) message = 'Nama perumahan wajib diisi.';
   else if (!located) message = 'Pilih lokasi perumahan di peta.';
+  else if (containing !== chosenArea) {
+    message = containing
+      ? `Lokasi berada di dalam ${AREA_NAMES[containing]}, bukan ${AREA_NAMES[chosenArea]}.`
+      : `Lokasi berada di luar boundary ${AREA_NAMES[chosenArea]}.`;
+  }
   else if (!complete.length) message = 'Isi minimal satu baris katalog dengan LT, LB, dan Harga lebih dari 0.';
   hint.textContent = message;
   hint.classList.toggle('error', !!message);
@@ -1017,6 +1057,8 @@ document.getElementById('pinCategory').innerHTML = Object.entries(CATEGORY_META)
 
 // Bound once, never inside a render, so repeated renders cannot stack handlers.
 document.getElementById('developerList').addEventListener('click', event => {
+  const populationButton = event.target.closest('[data-pop-area]');
+  if (populationButton) { openPopulationDialog(populationButton.dataset.popArea); return; }
   const btn = event.target.closest('[data-area]');
   if (!btn) return;
   state.selectedArea = state.selectedArea === btn.dataset.area ? null : btn.dataset.area;
@@ -1061,7 +1103,16 @@ document.addEventListener('click', event => {
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeAreaMenu(); });
 map.on('movestart zoomstart', closeAreaMenu);
-map.on('contextmenu', closeAreaMenu);
+
+// One map-level handler decides everything, so there is no dependence on whether a layer
+// or the map receives the event first — the previous per-polygon binding opened the menu
+// and a map-level close handler immediately hid it again.
+map.on('contextmenu', event => {
+  const area = areaAt(event.latlng);
+  if (!area) { closeAreaMenu(); return; }
+  L.DomEvent.preventDefault(event.originalEvent);
+  openAreaMenu(area, event.originalEvent);
+});
 
 document.getElementById('catalogBody').addEventListener('click', event => {
   const remove = event.target.closest('[data-remove]');
@@ -1074,6 +1125,7 @@ document.getElementById('catalogBody').addEventListener('click', event => {
 });
 document.getElementById('catalogBody').addEventListener('input', validateComplexForm);
 document.getElementById('complexName').addEventListener('input', validateComplexForm);
+document.getElementById('complexArea').addEventListener('change', validateComplexForm);
 
 document.getElementById('addCatalogRow').addEventListener('click', () => {
   state.complexDraft.catalog = [...readCatalogRows(), blankCatalogRow()];
@@ -1190,11 +1242,26 @@ document.getElementById('resetPopulation').addEventListener('click', () => {
   markDirty(); closePopulationDialog(); renderControls(); renderMap();
 });
 document.getElementById('addPinButton').addEventListener('click', () => { setAddMode(true); document.getElementById('sidebar').classList.remove('open'); });
+document.getElementById('addComplexButton').addEventListener('click', () => {
+  state.complexDraft = { id: null, name: '', area: state.selectedArea || 'JGC', latlng: null, catalog: [], custom: {}, logo: '' };
+  setAddMode(true, 'complex');
+  document.getElementById('sidebar').classList.remove('open');
+});
 document.getElementById('cancelAddMode').addEventListener('click', () => setAddMode(false));
 map.on('click', e => {
   if (!state.addMode) return;
   if (state.pickTarget === 'complex') {
+    // A perumahan must sit inside a township, so an outside click is rejected and
+    // pick-mode stays active rather than opening a dialog that cannot be saved.
+    const area = areaAt(e.latlng);
+    if (!area) {
+      const banner = document.getElementById('addMode');
+      banner.classList.add('warn');
+      document.getElementById('addModeLabel').textContent = 'Klik di dalam boundary kawasan (area berwarna).';
+      return;
+    }
     state.complexDraft.latlng = [e.latlng.lat, e.latlng.lng];
+    state.complexDraft.area = area;
     openComplexDialog(state.complexDraft);
   } else {
     openPinDialog(null, e.latlng);

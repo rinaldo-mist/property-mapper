@@ -55,10 +55,19 @@ Menekan salah satu developer memfokuskan peta ke kawasan tersebut dengan animasi
 
 ## Perumahan dan populasi
 
-Klik kanan di dalam boundary sebuah kawasan untuk membuka menu:
+### Menambah perumahan
 
-- **Tambah perumahan** — isi nama, pilih lokasi di peta, lalu isi katalog unit (LT, LB, Harga dalam miliar). Minimal satu baris katalog harus terisi lengkap dan lebih besar dari nol sebelum dapat disimpan. Perumahan muncul sebagai pin hijau dan ikut tersaring pada Range Harga.
-- **Set populasi** — mengubah angka populasi kawasan. Nilai asal dari KMZ dapat dikembalikan lewat **Kembalikan dari KMZ**.
+1. Tekan **＋ Tambah perumahan** pada panel kiri.
+2. Klik lokasi di peta. **Lokasi harus berada di dalam boundary salah satu kawasan** — klik di luar boundary akan ditolak dan mode pemilihan tetap aktif. Developer terisi otomatis mengikuti kawasan yang terpilih.
+3. Isi nama dan katalog unit (LT, LB, Harga dalam miliar). Minimal satu baris katalog harus terisi lengkap dan lebih besar dari nol sebelum dapat disimpan.
+
+Perumahan muncul sebagai pin hijau, ikut tersaring pada Range Harga sesuai rentang katalognya, dan dapat diubah lewat **Edit perumahan** pada popup pin.
+
+Sebagai jalan pintas, **klik kanan di dalam boundary** sebuah kawasan juga membuka menu berisi **Tambah perumahan** dan **Set populasi**.
+
+### Mengubah populasi
+
+Arahkan kursor ke salah satu kartu developer, lalu tekan ikon populasi di sudut kanan atas kartu. Nilai asal dari KMZ dapat dikembalikan kapan saja lewat **Kembalikan dari KMZ**.
 
 ## Menyimpan ke KMZ
 

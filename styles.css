@@ -38,7 +38,15 @@ button { cursor: pointer; }
 .section-heading > span { font-size: 12px; color: var(--muted); }
 .text-button { border: 0; background: none; color: var(--green-2); font-size: 12px; padding: 0; }
 .developer-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.developer-button { display: flex; align-items: center; gap: 9px; text-align: left; border: 1px solid var(--line); background: white; padding: 11px; border-radius: 12px; color: #535d57; transition: .18s; }
+.developer-item { position: relative; display: flex; }
+.developer-button { flex: 1; display: flex; align-items: center; gap: 9px; text-align: left; border: 1px solid var(--line); background: white; padding: 11px; border-radius: 12px; color: #535d57; transition: .18s; }
+/* Overlaid rather than nested: a button cannot legally contain another button. */
+.developer-more { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #aab4ad; padding: 0; opacity: 0; transition: .18s; }
+.developer-more svg { width: 14px; height: 14px; }
+.developer-item:hover .developer-more, .developer-more:focus-visible { opacity: 1; }
+.developer-more:hover { background: #eef1ee; color: var(--green); }
+.developer-button.active + .developer-more { color: rgba(255,255,255,.7); opacity: .8; }
+.developer-button.active + .developer-more:hover { background: rgba(255,255,255,.16); color: white; }
 .developer-button:hover { border-color: #bdc8c1; transform: translateY(-1px); }
 .developer-button.active { color: white; background: var(--green); border-color: var(--green); box-shadow: 0 5px 14px rgba(23,76,54,.17); }
 .dev-code { font: 800 11px Manrope; min-width: 28px; }
@@ -141,6 +149,7 @@ footer { border-top: 1px solid var(--line); padding: 12px 20px; color: var(--mut
 .primary-button:disabled { opacity: .45; cursor: not-allowed; }
 .add-mode { position: absolute; z-index: 900; left: 50%; top: 90px; transform: translateX(-50%); padding: 11px 14px; background: #162019; color: white; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.2); display: flex; align-items: center; gap: 14px; }
 .add-mode button { border: 0; border-radius: 8px; padding: 6px 9px; background: white; color: #162019; }
+.add-mode.warn { background: #8a2f2f; }
 .map-picking { cursor: crosshair; }
 .pin-dialog { width: min(520px, calc(100vw - 28px)); border: 0; border-radius: 18px; padding: 0; box-shadow: 0 22px 70px rgba(16,35,23,.3); }
 .pin-dialog::backdrop { background: rgba(14,25,18,.46); backdrop-filter: blur(3px); }
