@@ -328,6 +328,24 @@ function visibleFeatures() {
   );
 }
 
+// Populasi is the one group that describes the township itself rather than a pin, so it
+// also decides which boundaries stay highlighted. An area with no figure has no band and
+// is muted while the group is constraining, matching how valueOf -> [] hides a pin.
+function areaPassesPopulation(area) {
+  const active = state.filters.population;
+  if (!active || active.size === 0) return true;
+  return populationBandsFor(state.areaPopulation[area]).some(id => active.has(id));
+}
+
+// The boundaries currently on the map, each tagged with whether it passes the population
+// filter. Non-matching ones are still drawn — muted rather than removed — so the map keeps
+// all four townships as context, and so hit-testing (area menu, pick mode) still resolves.
+function drawnBoundaries() {
+  return state.boundaries
+    .filter(b => !state.selectedArea || b.area === state.selectedArea)
+    .map(b => ({ ...b, match: areaPassesPopulation(b.area) }));
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
@@ -427,13 +445,19 @@ function catalogSummary(complex) {
   return `<div class="popup-catalog">${complex.catalog.length} tipe unit · ${escapeHtml(span)}</div>`;
 }
 
+const BOUNDARY_STYLE = {
+  match: { color: '#d45d5d', weight: 2, opacity: .82, fillColor: '#f3a6a6', fillOpacity: .5, dashArray: '7 5' },
+  muted: { color: '#9aa3a8', weight: 1, opacity: .4, fillColor: '#b9c1c5', fillOpacity: .12, dashArray: '4 6' }
+};
+
 function renderMap() {
   markerLayer.clearLayers(); boundaryLayer.clearLayers(); markerById.clear();
   const visible = visibleFeatures();
-  state.boundaries.filter(b => !state.selectedArea || b.area === state.selectedArea).forEach(b => {
-    L.polygon(b.latlngs, { color: '#d45d5d', weight: 2, opacity: .82, fillColor: '#f3a6a6', fillOpacity: .5, dashArray: '7 5' })
-      .bindTooltip(AREA_NAMES[b.area], { sticky: true })
-      .addTo(boundaryLayer);
+  drawnBoundaries().forEach(b => {
+    const polygon = L.polygon(b.latlngs, b.match ? BOUNDARY_STYLE.match : BOUNDARY_STYLE.muted);
+    // Only a highlighted boundary names itself; a muted one reads as inert context.
+    if (b.match) polygon.bindTooltip(AREA_NAMES[b.area], { sticky: true });
+    polygon.addTo(boundaryLayer);
   });
   // No per-marker popupopen binding: one delegated listener on the map container
   // handles every Edit button, so reopening a popup cannot stack handlers.
@@ -563,7 +587,11 @@ function syncControls() {
 // animate: true glides (developer toggle, "Lihat semua"); false snaps (first paint).
 function fitVisible({ animate = false } = {}) {
   const points = visibleFeatures().map(f => f.latlng);
-  const boundaryPoints = state.boundaries.filter(b => !state.selectedArea || b.area === state.selectedArea).flatMap(b => b.latlngs);
+  const boundaries = drawnBoundaries();
+  // Frame what the population filter highlighted; muted boundaries only widen the view
+  // when nothing passed at all, so "Lihat semua" still shows something.
+  const highlighted = boundaries.filter(b => b.match);
+  const boundaryPoints = (highlighted.length ? highlighted : boundaries).flatMap(b => b.latlngs);
   const all = [...points, ...boundaryPoints];
   if (!all.length) return;
   const bounds = L.latLngBounds(all);
