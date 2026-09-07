@@ -32,9 +32,9 @@ const PRICE_BANDS = [
 ];
 
 // Scaled to the real KMZ figures (Sedayu ~9-10rb, Metland ~10rb, JGC ~20-29rb,
-// KHI ~60-125rb). Bounds are (min, max] so a value on a boundary falls in the lower
-// band, matching PRICE_BANDS. Population arrives as a RANGE, so a band matches when
-// the range overlaps it.
+// KHI ~60-125rb). Bounds are (min, max] so a single value on a boundary falls in the
+// lower band, matching PRICE_BANDS. Population arrives as a RANGE, so a band matches
+// when the range overlaps it — see populationBandsFor for how endpoints are handled.
 const POPULATION_BANDS = [
   { id: 'lte10k', label: '≤ 10rb', min: -Infinity, max: 10000 },
   { id: '10to30k', label: '10 – 30rb', min: 10000, max: 30000 },
@@ -43,10 +43,17 @@ const POPULATION_BANDS = [
 ];
 
 // Accepts a number or a {min,max} range; returns the bands it touches.
+// A range must overlap a band by more than a single endpoint, or KHI's 60rb–125rb would
+// also count as "30 – 60rb" on the shared 60.000 alone. So a range that STARTS on a
+// bound belongs to the upper band and one that ENDS on a bound belongs to the lower one.
+// A single figure has no width to test, so it keeps the plain (min, max] rule.
 function populationBandsFor(value) {
   const range = normalizePopulation(value);
   if (!range) return [];
-  return POPULATION_BANDS.filter(b => range.max > b.min && range.min <= b.max).map(b => b.id);
+  return POPULATION_BANDS.filter(b => range.min === range.max
+    ? range.min > b.min && range.min <= b.max
+    : range.max > b.min && range.min < b.max
+  ).map(b => b.id);
 }
 
 function normalizePopulation(value) {
