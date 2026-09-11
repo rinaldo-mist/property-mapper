@@ -57,8 +57,32 @@
         <button class="admin-button" id="addPinButton">＋ Tambah pin manual</button>
         <button class="admin-button" id="addComplexButton">＋ Tambah perumahan</button>
         <button class="admin-button ghost" id="manageGroupsButton">Kelola kategori</button>
-        <button class="admin-button ghost" id="saveKmzButton">Simpan ke KMZ<span class="dirty-dot hidden" id="kmzDirty" title="Ada perubahan yang belum disimpan"></span></button>
-        <span class="storage-note"><span class="status-dot"></span><span id="storageNote">Perubahan tersimpan di browser ini — simpan ke KMZ untuk dibagikan</span></span>
+
+        <button class="admin-button ghost" id="importKmzButton">
+          Import KMZ
+        </button>
+
+        <input
+          id="importKmzInput"
+          class="hidden"
+          type="file"
+          accept=".kmz,application/vnd.google-earth.kmz,application/zip"
+        />
+
+        <button class="admin-button ghost" id="saveKmzButton">
+          Simpan ke KMZ<span
+            class="dirty-dot hidden"
+            id="kmzDirty"
+            title="Ada perubahan yang belum disimpan"
+          ></span>
+        </button>
+
+        <span class="storage-note">
+          <span class="status-dot"></span>
+          <span id="storageNote">
+            Perubahan tersimpan di browser ini — simpan ke KMZ untuk dibagikan
+          </span>
+        </span>
       </footer>
     </aside>
 
@@ -92,7 +116,34 @@
       <div class="dialog-head"><div><span class="eyebrow">PIN MANUAL</span><h2 id="dialogTitle">Tambah fasilitas</h2></div><button type="button" class="dialog-close" id="closePinDialog" aria-label="Tutup">×</button></div>
       <input type="hidden" id="pinId" />
       <label>Nama fasilitas<input id="pinName" required maxlength="100" placeholder="Contoh: Dealer ABC" /></label>
-      <div class="form-grid"><label>Developer<select id="pinArea" required></select></label><label>Kategori<select id="pinCategory" required></select></label></div>
+      <div class="form-grid">
+        <label>
+          Kepemilikan
+          <select id="pinOwnership" required>
+            <option value="developer">Developer</option>
+            <option value="public">Fasilitas publik</option>
+          </select>
+        </label>
+
+        <label>
+          Kategori
+          <select id="pinCategory" required></select>
+        </label>
+      </div>
+
+      <div class="form-grid">
+        <label id="pinDeveloperField">
+          Developer
+          <select id="pinDeveloper"></select>
+        </label>
+
+        <label>
+          Area / Township
+          <select id="pinArea">
+            <option value="">— Tidak ditentukan —</option>
+          </select>
+        </label>
+      </div>
       <div class="form-grid"><label>Latitude<input id="pinLat" type="number" step="any" required /></label><label>Longitude<input id="pinLng" type="number" step="any" required /></label></div>
       <label>Logo pin (opsional, maksimum 500 KB)<input id="pinLogo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" /></label>
       <div class="logo-row"><span class="logo-preview" id="logoPreview">Tanpa logo</span><button type="button" class="text-button" id="removeLogo">Hapus logo</button></div>

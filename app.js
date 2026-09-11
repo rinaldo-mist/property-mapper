@@ -1,8 +1,36 @@
-const AREA_NAMES = {
-  Sedayu: 'Sedayu City',
-  JGC: 'Jakarta Garden City',
-  KHI: 'Kota Harapan Indah',
-  Metland: 'Metland Menteng'
+const DEFAULT_AREAS = [
+  { id: 'Sedayu', name: 'Sedayu City' },
+  { id: 'JGC', name: 'Jakarta Garden City' },
+  { id: 'KHI', name: 'Kota Harapan Indah' },
+  { id: 'Metland', name: 'Metland Menteng' }
+];
+
+const AREA_NAMES = Object.fromEntries(
+  DEFAULT_AREAS.map(area => [area.id, area.name])
+);
+
+const PUBLIC_CATEGORIES = new Set([
+  'Toll Gate',
+  'Train Station',
+  'Bus Terminal'
+]);
+
+const PUBLIC_CATEGORY_META = {
+  'Toll Gate': {
+    label: 'Toll Gate',
+    color: '#b85c38',
+    icon: '<path d="M4 18h16v2H4zm2-2V9h3v7H6zm5 0V9h2v7h-2zm4 0V9h3v7h-3zM3 7l9-4 9 4v2H3V7z"/>'
+  },
+  'Train Station': {
+    label: 'Train Station',
+    color: '#367a68',
+    icon: '<path d="M6 2h12c1.1 0 2 .9 2 2v11c0 1.66-1.34 3-3 3l2 2v1h-2l-2-3H9l-2 3H5v-1l2-2c-1.66 0-3-1.34-3-3V4c0-1.1.9-2 2-2zm0 2v7h12V4H6zm2 9c-.83 0-1.5.67-1.5 1.5S7.17 16 8 16s1.5-.67 1.5-1.5S8.83 13 8 13zm8 0c-.83 0-1.5.67-1.5 1.5S15.17 16 16 16s1.5-.67 1.5-1.5S16.83 13 16 13z"/>'
+  },
+  'Bus Terminal': {
+    label: 'Bus Terminal',
+    color: '#8a6b32',
+    icon: '<path d="M5 16v3h2v-2h10v2h2v-3l1-2V6c0-2.21-3.58-4-8-4S4 3.79 4 6v8l1 2zm2-2c-.83 0-1.5-.67-1.5-1.5S6.17 11 7 11s1.5.67 1.5 1.5S7.83 14 7 14zm10 0c-.83 0-1.5-.67-1.5-1.5S16.17 11 17 11s1.5.67 1.5 1.5S17.83 14 17 14zM6 9V6h12v3H6z"/>'
+  }
 };
 
 // `icon` is the inner markup of a 24x24 SVG (Material Design geometry), not a letter.
@@ -81,7 +109,8 @@ function formatPopulation(value) {
 
 const CATEGORY_ALIASES = {
   Sekolah: 'School', School: 'School', Hospital: 'Hospital',
-  'Showroom Dealer': 'Showroom Dealer', 'Gas Station': 'Gas Station', University: 'University'
+  'Showroom Dealer': 'Showroom Dealer', 'Gas Station': 'Gas Station', University: 'University',
+  'Toll Gate': 'Toll Gate', 'Train Station': 'Train Station', 'Bus Terminal': 'Bus Terminal',
 };
 
 const FEATURE_FIXES = {
@@ -96,7 +125,8 @@ const POPULATION_KEY = 'facility-map-population-v1';
 const GROUPS_KEY = 'facility-map-groups-v1';
 
 const state = {
-  features: [], boundaries: [], manualFeatures: [], complexes: [],
+  projectId: 'default',  projectName: '', areas: [], developers: [],
+  features: [], boundaries: [], manualFeatures: [], complexes: [], 
   areaPopulation: {}, customGroups: [],
   kmzPopulation: {},          // as parsed from the KMZ, so a manual override can be undone
   complexDraft: { latlng: null, catalog: [], custom: {} },
@@ -111,6 +141,87 @@ const state = {
   filters: { facilities: new Set(), price: new Set(), population: new Set() },
   multi: { facilities: true, price: true, population: true }
 };
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unknown';
+}
+
+function areaById(id) {
+  return state.areas.find(area => area.id === id) || null;
+}
+
+function areaLabel(id) {
+  if (!id) return 'Tidak ditentukan';
+
+  const area = areaById(id);
+  if (area) return area.name;
+
+  return AREA_NAMES[id] || id;
+}
+
+function developerById(id) {
+  return state.developers.find(developer => developer.id === id) || null;
+}
+
+function developerLabel(id) {
+  if (!id) return 'Fasilitas publik';
+
+  const developer = developerById(id);
+  return developer ? developer.name : id;
+}
+
+function registerArea(name, id = null) {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) return null;
+
+  const areaId = id || slugify(cleanName);
+
+  let existing = state.areas.find(area => area.id === areaId);
+
+  if (!existing) {
+    existing = {
+      id: areaId,
+      name: cleanName
+    };
+
+    state.areas.push(existing);
+  }
+
+  return existing;
+}
+
+function registerDeveloper(name, id = null) {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) return null;
+
+  const developerId = id || slugify(cleanName);
+
+  let existing = state.developers.find(
+    developer => developer.id === developerId
+  );
+
+  if (!existing) {
+    existing = {
+      id: developerId,
+      name: cleanName
+    };
+
+    state.developers.push(existing);
+  }
+
+  return existing;
+}
+function initializeDefaultAreas() {
+  state.areas = DEFAULT_AREAS.map(area => ({ ...area }));
+
+  state.developers = DEFAULT_AREAS.map(area => ({
+    id: area.id,
+    name: area.name
+  }));
+}
 const map = L.map('map', { zoomControl: false, attributionControl: true }).setView([-6.174, 106.963], 13);
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -191,11 +302,52 @@ function parseCoordinates(raw) {
 }
 
 function normalizeArea(name) {
-  if (/sedayu/i.test(name)) return 'Sedayu';
-  if (/metland/i.test(name)) return 'Metland';
-  if (/\bKHI\b|harapan indah/i.test(name)) return 'KHI';
-  if (/\bJGC\b|jakarta garden/i.test(name)) return 'JGC';
+  const value = String(name || '').trim();
+
+  if (!value) return null;
+
+  if (/sedayu/i.test(value)) {
+    const area = registerArea('Sedayu City', 'Sedayu');
+    return area?.id || null;
+  }
+
+  if (/metland/i.test(value)) {
+    const area = registerArea('Metland Menteng', 'Metland');
+    return area?.id || null;
+  }
+
+  if (/\bKHI\b|harapan indah/i.test(value)) {
+    const area = registerArea('Kota Harapan Indah', 'KHI');
+    return area?.id || null;
+  }
+
+  if (/\bJGC\b|jakarta garden/i.test(value)) {
+    const area = registerArea('Jakarta Garden City', 'JGC');
+    return area?.id || null;
+  }
+
+  const existing = state.areas.find(
+    area =>
+      area.id.toLowerCase() === value.toLowerCase() ||
+      area.name.toLowerCase() === value.toLowerCase()
+  );
+
+  if (existing) return existing.id;
+
   return null;
+}
+function findAreaByText(value) {
+  const text = String(value || '').trim().toLowerCase();
+
+  if (!text) return null;
+
+  return (
+    state.areas.find(
+      area =>
+        area.id.toLowerCase() === text ||
+        area.name.toLowerCase() === text
+    ) || null
+  );
 }
 
 // The "Population" folder holds one point per area whose *name* carries the figure
@@ -234,8 +386,20 @@ function adoptOwnPlacemark(pm, own, name, context) {
 
 function traverseFolder(folder, context = { area: null, category: null }) {
   const folderName = textOf(folder, 'name');
+  const normalizedFolderArea = normalizeArea(folderName);
+  if (normalizedFolderArea) {
+    const area = areaById(normalizedFolderArea);
+
+    if (area) {
+      registerDeveloper(area.name, area.id);
+    }
+  }
   if (/^(population|populasi)$/i.test(folderName)) { parsePopulationFolder(folder); return; }
-  const next = { ...context };
+  const next = { ...context,
+  area: normalizeArea(folderName) || context.area,
+  category:
+  CATEGORY_ALIASES[folderName] ||
+  (PUBLIC_CATEGORIES.has(folderName) ? folderName : context.category) };
   next.area = normalizeArea(folderName) || next.area;
   next.category = CATEGORY_ALIASES[folderName] || next.category;
 

@@ -197,3 +197,17 @@ footer { border-top: 1px solid var(--line); padding: 12px 20px; color: var(--mut
   .danger-button { order: 3; flex: 1 0 100%; }
   .add-mode { top: 70px; width: calc(100% - 24px); justify-content: space-between; }
 }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+#pinDeveloperField.hidden {
+  display: none;
+}
+
+#importKmzInput {
+  display: none;
+}
