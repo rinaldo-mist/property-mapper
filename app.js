@@ -42,7 +42,10 @@ const CATEGORY_META = {
   'Showroom Dealer': { label: 'Showroom', color: '#e39b32', icon: '<path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>' },
   'Gas Station': { label: 'SPBU', color: '#7657c9', icon: '<path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/>' },
   University: { label: 'University', color: '#168b91', icon: '<path d="M4 10v7h3v-7H4zm6 0v7h3v-7h-3zM2 22h19v-3H2v3zm14-12v7h3v-7h-3zm-4.5-9L2 6v2h19V6l-9.5-5z"/>' },
-  'Housing Complex': { label: 'Perumahan', color: '#4a9d6e', icon: '<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>' },
+  'Housing Complex': { label: 'Perumahan', color: '#4a9d63', icon: '<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>' },
+  'Toll Gate': { icon: '🚧', color: '#074a81' },
+  'Train Station': { icon: '🚆', color: '#dd0303' },
+  'Bus Terminal': { icon: '🚌', color: '#d9dd03' },
   Other: { label: 'Lainnya', color: '#68726c', icon: '<circle cx="12" cy="12" r="5"/>' }
 };
 
@@ -389,19 +392,19 @@ function traverseFolder(folder, context = { area: null, category: null }) {
   const normalizedFolderArea = normalizeArea(folderName);
   if (normalizedFolderArea) {
     const area = areaById(normalizedFolderArea);
-
     if (area) {
       registerDeveloper(area.name, area.id);
     }
   }
   if (/^(population|populasi)$/i.test(folderName)) { parsePopulationFolder(folder); return; }
-  const next = { ...context,
-  area: normalizeArea(folderName) || context.area,
-  category:
-  CATEGORY_ALIASES[folderName] ||
-  (PUBLIC_CATEGORIES.has(folderName) ? folderName : context.category) };
-  next.area = normalizeArea(folderName) || next.area;
-  next.category = CATEGORY_ALIASES[folderName] || next.category;
+  const next = { ...context };
+  const normalizedArea = normalizeArea(folderName);
+  if (normalizedArea) {
+    next.area = normalizedArea;
+    next.developerId = normalizedArea;
+  }
+  next.category =
+    CATEGORY_ALIASES[folderName] || next.category;
 
   directChildren(folder, 'Placemark').forEach((pm, index) => {
     const name = textOf(pm, 'name') || 'Tanpa nama';
@@ -418,11 +421,15 @@ function traverseFolder(folder, context = { area: null, category: null }) {
       const fix = FEATURE_FIXES[name] || {};
       const guessedArea = fix.area || next.area || normalizeArea(name) || null;
       if (!guessedArea) return;
+      const category = fix.category || next.category || 'Other';
+      const isPublic = PUBLIC_CATEGORIES.has(category);
       state.features.push({
         id: `${guessedArea}-${name}-${index}`,
         name: fix.name || name,
         area: guessedArea,
-        category: fix.category || next.category || 'Other',
+        category,
+        ownershipType: isPublic ? 'public' : 'developer',
+        developerId: isPublic ? null : (next.developerId || null),
         latlng: positions[0]
       });
     }
