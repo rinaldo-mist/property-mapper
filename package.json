@@ -1,0 +1,15 @@
+{
+  "name": "property-mapper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Facility map for Sedayu, JGC, KHI and Metland. Static frontend with an admin-only API for KMZ uploads.",
+  "scripts": {
+    "hash": "node api/_lib/auth.mjs hash"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

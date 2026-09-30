@@ -35,13 +35,30 @@ Pin manual dan logo disimpan melalui `localStorage`, sehingga tetap tersedia saa
 
 Boundary menggunakan garis merah lembut dan area light red dengan transparansi 50%.
 
+## Mode: Residential dan Industrial
+
+Tombol di atas daftar developer memilih **dataset** yang sedang dibuka. Keduanya terpisah
+sepenuhnya: berkas KMZ sendiri, dan salinan sendiri untuk pin manual, perumahan, populasi,
+serta kategori kustom. Berpindah mode tidak pernah mencampur data keduanya.
+
+- **Residential** membaca `data/facility-mapping.kmz`.
+- **Industrial** membaca `data/industrial.kmz`.
+
+Jika berkas untuk sebuah mode belum ada, peta tampil kosong dengan keterangan
+"Dataset ... belum tersedia" — panel filter tetap dapat dipakai.
+
+> Catatan: harga lahan industri biasanya dihitung per m², bukan miliar per unit seperti
+> perumahan. Grup **Range Harga** saat ini memakai skala residensial untuk kedua mode.
+
 ## Filter
 
 Panel kiri berisi beberapa grup filter yang berdiri sendiri:
 
-- **Fasilitas** — School, Hospital, Showroom, SPBU, University, dan Perumahan.
+- **Fasilitas** — School, Hospital, Showroom, SPBU, University, Gerbang Tol,
+  Transportasi Umum, dan Perumahan.
 - **Range Harga** — diambil dari katalog unit setiap perumahan (≤ 1 M, 1–2 M, 2–3 M, > 3 M).
 - **Populasi** — atribut kawasan (≤ 10rb, 10–30rb, 30–60rb, > 60rb).
+- **Tipe Simpul** dan **Operator** — muncul hanya bila ada titik Transportasi Umum.
 - Grup buatan sendiri melalui **Kelola kategori**.
 
 Aturannya:
@@ -52,6 +69,44 @@ Aturannya:
 - Titik yang tidak punya nilai pada grup yang sedang menyaring akan disembunyikan. Karena itu memilih salah satu Range Harga menyisakan perumahan saja — fasilitas biasa memang tidak punya harga.
 
 Menekan salah satu developer memfokuskan peta ke kawasan tersebut dengan animasi. Pencarian dan perubahan chip sengaja **tidak** menggeser peta.
+
+## Fasilitas umum
+
+**Gerbang Tol** dan **Transportasi Umum** adalah fasilitas publik, sehingga tidak dimiliki
+developer mana pun. Saat salah satu kategori ini dipilih pada dialog pin, kolom
+**Developer** otomatis disembunyikan dan titik tersebut disimpan tanpa kawasan — daftar
+maupun popup menampilkannya sebagai *Fasilitas umum*.
+
+Karena bukan milik developer, titik ini **tetap terlihat** ketika sebuah developer sedang
+dipilih dan ketika grup Populasi sedang menyaring. Keduanya adalah atribut kawasan yang
+memang tidak dimiliki fasilitas publik.
+
+### Transportasi Umum
+
+Setiap titik memiliki **tipe simpul** dan **operator**:
+
+| Tipe | Dipakai oleh |
+|---|---|
+| **Stasiun** | MRT Jakarta, LRT Jakarta, LRT Jabodebek, KRL Commuterline, KA Bandara, Whoosh |
+| **Terminal Bus** | DAMRI, bus AKAP/AKDP, bus kota |
+| **Halte BRT** | TransJakarta |
+
+Operator bersifat **pilihan ganda**, karena satu titik dapat dilayani beberapa sistem
+sekaligus — Stasiun Dukuh Atas misalnya melayani MRT, LRT Jakarta, KRL, dan TransJakarta.
+Titik tersebut akan muncul pada keempat chip operator.
+
+Angkot/mikrolet sengaja tidak dimasukkan: rutenya tetap, tetapi tidak memiliki titik henti
+tetap untuk dipetakan. Mikrotrans (JakLingko) tersedia karena memakai halte resmi.
+
+## Mencari lokasi
+
+Kotak pencarian menyaring fasilitas pada peta, dan sekaligus mencari alamat melalui
+**Photon** (OpenStreetMap) — tanpa API key dan tanpa biaya. Hasil alamat muncul di bagian
+**Lokasi** di bawah daftar **Fasilitas**; memilihnya menggeser peta ke titik tersebut dan
+tidak membuat pin baru.
+
+Pencarian alamat berjalan setelah jeda ~300 ms dan minimal 3 huruf. Bila jaringan gagal,
+pencarian fasilitas lokal tetap berfungsi seperti biasa.
 
 ## Perumahan dan populasi
 
@@ -77,6 +132,44 @@ Semua perubahan langsung tersimpan di `localStorage`. Tombol **Simpan ke KMZ** m
 - Di Firefox dan Safari berkas diunduh, lalu salin sendiri ke folder `data/`.
 
 Data aplikasi ditulis di dalam satu folder `Property Mapper` beserta `ExtendedData` berawalan `pm:`, sehingga struktur, gaya, dan deskripsi asli dari Google Earth tetap utuh dan berkas tetap dapat dibuka di Google Earth.
+
+## Admin dan pengunjung
+
+Tanpa server, kata sandi apa pun yang ditaruh di berkas JavaScript dapat dibaca siapa saja
+melalui devtools — termasuk nilai dari environment variable, karena ikut tertanam saat
+build. Karena itu pemeriksaan admin dilakukan di sisi server melalui folder `api/`.
+
+- **Pengunjung** melihat peta dalam mode baca saja. Semua tombol pengubah data
+  disembunyikan, termasuk klik kanan pada boundary.
+- **Admin** masuk melalui **Masuk sebagai admin**, lalu dapat mengubah data dan
+  mengunggah KMZ ke server.
+
+Perubahan admin tersimpan ke server dan terlihat oleh pengunjung lain **dalam ~1 menit**.
+Batas itu berasal dari cache CDN Vercel Blob yang minimal 60 detik; halaman memeriksa versi
+setiap 30 detik dan hanya saat tab sedang aktif.
+
+### Menyiapkan server
+
+1. Buat **Blob store** pada proyek Vercel (Storage → Create → Blob). Vercel mengisi
+   `BLOB_READ_WRITE_TOKEN` secara otomatis.
+2. Isi dua environment variable pada proyek:
+
+   ```bash
+   openssl rand -base64 48        # -> SESSION_SECRET
+   npm run hash -- "kata sandi"   # -> ADMIN_PASSWORD_HASH
+   ```
+
+   Hanya *hash* yang disimpan; kata sandi aslinya tidak pernah dikirim ke mana pun.
+3. Deploy. `npm install` dijalankan Vercel secara otomatis.
+
+Bila `api/` belum ter-deploy, halaman tetap berjalan seperti situs statis biasa: data
+dibaca dari `data/*.kmz` dan perubahan tersimpan di `localStorage` browser masing-masing.
+
+### Catatan
+
+Hanya ada satu akun admin. Bila dua admin menyimpan pada saat bersamaan, perubahan terakhir
+yang menang untuk data, sementara nomor versi memakai compare-and-set sehingga tidak ada
+pembaruan yang hilang diam-diam.
 
 ## Platform yang cocok
 

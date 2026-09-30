@@ -14,12 +14,24 @@ const CATEGORY_META = {
   'Showroom Dealer': { label: 'Showroom', color: '#e39b32', icon: '<path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>' },
   'Gas Station': { label: 'SPBU', color: '#7657c9', icon: '<path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/>' },
   University: { label: 'University', color: '#168b91', icon: '<path d="M4 10v7h3v-7H4zm6 0v7h3v-7h-3zM2 22h19v-3H2v3zm14-12v7h3v-7h-3zm-4.5-9L2 6v2h19V6l-9.5-5z"/>' },
+  // `public: true` means the facility belongs to no developer: area stays null, and the
+  // Developer selection and Populasi group do not apply to it.
+  'Toll Gate': { label: 'Gerbang Tol', color: '#8c5a3c', public: true, icon: '<path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-11.5 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm9 0c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/>' },
+  'Public Transportation': { label: 'Transportasi Umum', color: '#b5417d', public: true, icon: '<path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h12v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>' },
   'Housing Complex': { label: 'Perumahan', color: '#4a9d6e', icon: '<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>' },
   Other: { label: 'Lainnya', color: '#68726c', icon: '<circle cx="12" cy="12" r="5"/>' }
 };
 
 function categoryIcon(meta) {
   return `<svg class="cat-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${meta.icon}</svg>`;
+}
+
+function isPublicCategory(key) { return !!(CATEGORY_META[key] && CATEGORY_META[key].public); }
+
+// The one place that turns a possibly-absent area into display text. Public facilities
+// have no developer, so every caller must go through this rather than AREA_NAMES[...].
+function areaLabel(feature) {
+  return feature.area ? AREA_NAMES[feature.area] : 'Fasilitas umum';
 }
 
 // Bands are non-overlapping. The stated brackets (<=1, 1-2, 2-3, >=3) collide at
@@ -79,6 +91,31 @@ function formatPopulation(value) {
   return range.min === range.max ? `${fmt(range.min)} jiwa` : `${fmt(range.min)}–${fmt(range.max)} jiwa`;
 }
 
+// The physical thing at the point. Rail -> Stasiun, BRT -> Halte, everything else ->
+// Terminal; "Simpul Transportasi" (transit node) is the umbrella the three share.
+const TRANSIT_TYPES = [
+  { id: 'stasiun', label: 'Stasiun' },
+  { id: 'terminal', label: 'Terminal Bus' },
+  { id: 'halte', label: 'Halte BRT' }
+];
+
+// Multi-valued on purpose: Dukuh Atas is one point served by MRT, LRT Jakarta, KRL and
+// TransJakarta at once, so a single-operator field could not describe it.
+const TRANSIT_OPERATORS = [
+  { id: 'mrt', label: 'MRT Jakarta' },
+  { id: 'lrtj', label: 'LRT Jakarta' },
+  { id: 'lrtjb', label: 'LRT Jabodebek' },
+  { id: 'krl', label: 'KRL Commuterline' },
+  { id: 'kabandara', label: 'KA Bandara' },
+  { id: 'whoosh', label: 'Whoosh' },
+  { id: 'tj', label: 'TransJakarta' },
+  { id: 'mikrotrans', label: 'Mikrotrans (JakLingko)' },
+  { id: 'damri', label: 'DAMRI' },
+  { id: 'akap', label: 'Bus AKAP/AKDP' }
+];
+
+const TRANSIT_CATEGORY = 'Public Transportation';
+
 const CATEGORY_ALIASES = {
   Sekolah: 'School', School: 'School', Hospital: 'Hospital',
   'Showroom Dealer': 'Showroom Dealer', 'Gas Station': 'Gas Station', University: 'University'
@@ -89,11 +126,24 @@ const FEATURE_FIXES = {
   'Suzuki': { area: 'Sedayu', category: 'Showroom Dealer', name: 'Suzuki Sedayu' }
 };
 
-// Versioned separately so a malformed value in one key cannot take the others down with it.
+// Residential and Industrial are separate datasets: a distinct KMZ, and a distinct
+// slice of every stored collection. Residential keeps the original filename so the
+// existing data needs no migration.
+const MODES = {
+  residential: { label: 'Residential', kmz: 'data/facility-mapping.kmz' },
+  industrial: { label: 'Industrial', kmz: 'data/industrial.kmz' }
+};
+const DEFAULT_MODE = 'residential';
+
+// Versioned separately so a malformed value in one key cannot take the others down with
+// it, and suffixed by mode so the two datasets never bleed into each other.
 const STORAGE_KEY = 'facility-map-manual-pins-v1';
 const COMPLEX_KEY = 'facility-map-complexes-v1';
 const POPULATION_KEY = 'facility-map-population-v1';
 const GROUPS_KEY = 'facility-map-groups-v1';
+const MODE_KEY = 'facility-map-mode-v1';
+
+function storeKey(base) { return `${base}:${state.mode}`; }
 
 const state = {
   features: [], boundaries: [], manualFeatures: [], complexes: [],
@@ -105,11 +155,16 @@ const state = {
   kmlName: 'doc.kml',
   kmzExtras: {},              // non-KML zip entries, carried through on export
   dirty: false,               // local state has diverged from the last export
+  mode: DEFAULT_MODE,         // residential | industrial — selects the dataset
+  geoResults: [],             // Photon hits for the current query, shown beneath facilities
+  role: 'viewer',             // viewer | admin — decided by the server, never the client
+  manifest: null,             // blob URLs + versions from /api/manifest; null = no backend
+  serverVersion: null,        // last version seen for the current mode
   pickTarget: 'pin',          // what a map click in addMode is picking a location for
   selectedArea: null, query: '', addMode: false, draftLogo: '',
   // Empty set = the group is not constraining. See `groupPasses`.
-  filters: { facilities: new Set(), price: new Set(), population: new Set() },
-  multi: { facilities: true, price: true, population: true }
+  filters: { facilities: new Set(), transitType: new Set(), transitOperator: new Set(), price: new Set(), population: new Set() },
+  multi: { facilities: true, transitType: true, transitOperator: true, price: true, population: true }
 };
 const map = L.map('map', { zoomControl: false, attributionControl: true }).setView([-6.174, 106.963], 13);
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
@@ -126,6 +181,7 @@ const markerById = new Map();
 // `pm:`-prefixed ExtendedData names, so an export can remove its own previous output
 // without touching a single node of the original Google Earth tree.
 const PM_FOLDER = 'Property Mapper';
+const PM_PUBLIC_FOLDER = 'Umum';   // holds exported pins that belong to no developer
 const PM_PREFIX = 'pm:';
 
 function directChildren(parent, tag) {
@@ -217,8 +273,11 @@ function adoptOwnPlacemark(pm, own, name, context) {
   if (!coord) return;
   const positions = parseCoordinates(coord.textContent);
   if (!positions.length) return;
-  const area = own.area && AREA_NAMES[own.area] ? own.area : context.area;
-  if (!area) return;
+  const publicPin = own.kind === 'manual-pin' && isPublicCategory(own.category);
+  // Forced null rather than inherited: a public facility placed inside an area folder
+  // must still read as belonging to no developer.
+  const area = publicPin ? null : (own.area && AREA_NAMES[own.area] ? own.area : context.area);
+  if (!area && !publicPin) return;
   const base = {
     id: own.id || `${own.kind}-${crypto.randomUUID()}`,
     name, area, latlng: positions[0],
@@ -228,7 +287,11 @@ function adoptOwnPlacemark(pm, own, name, context) {
   if (own.kind === 'housing-complex') {
     state.complexes.push({ ...base, kind: 'complex', category: 'Housing Complex', catalog: parseJsonOr(own.catalog, []) });
   } else if (own.kind === 'manual-pin') {
-    state.manualFeatures.push({ ...base, manual: true, category: CATEGORY_META[own.category] ? own.category : 'Other' });
+    state.manualFeatures.push({
+      ...base, manual: true,
+      category: CATEGORY_META[own.category] ? own.category : 'Other',
+      transport: parseJsonOr(own.transport, null)
+    });
   }
 }
 
@@ -298,6 +361,17 @@ function filterGroups() {
       valueOf: f => [f.category]
     },
     {
+      id: 'transitType', label: 'Tipe Simpul', builtin: true,
+      optionsOf: () => hasTransit() ? TRANSIT_TYPES.map(t => ({ id: t.id, label: t.label })) : [],
+      valueOf: f => (f.transport && f.transport.type) ? [f.transport.type] : []
+    },
+    {
+      id: 'transitOperator', label: 'Operator', builtin: true,
+      optionsOf: () => hasTransit() ? TRANSIT_OPERATORS.map(o => ({ id: o.id, label: o.label })) : [],
+      // valueOf already returns an array, so an interchange needs no special case.
+      valueOf: f => (f.transport && f.transport.operators) || []
+    },
+    {
       id: 'price', label: 'Range Harga', builtin: true,
       optionsOf: () => PRICE_BANDS.map(b => ({ id: b.id, label: b.label })),
       // A complex spans every bracket its catalog covers — "any unit matches".
@@ -308,6 +382,7 @@ function filterGroups() {
     {
       id: 'population', label: 'Populasi', builtin: true,
       optionsOf: () => POPULATION_BANDS.map(b => ({ id: b.id, label: b.label })),
+      appliesTo: f => !isPublicCategory(f.category),
       // Population is an attribute of the township, inherited by everything in it.
       valueOf: f => populationBandsFor(state.areaPopulation[f.area])
     },
@@ -319,7 +394,14 @@ function filterGroups() {
   ];
 }
 
+// Both transit groups return no options until a transit pin exists, and
+// renderFilterGroups already skips a group whose optionsOf() is empty.
+function hasTransit() { return allFeatures().some(f => f.category === TRANSIT_CATEGORY); }
+
 function groupPasses(group, feature) {
+  // A group that does not describe this kind of pin never constrains it — Populasi is an
+  // attribute of a township, so a public facility simply is not in its scope.
+  if (group.appliesTo && !group.appliesTo(feature)) return true;
   const active = state.filters[group.id];
   if (!active || active.size === 0) return true;
   return group.valueOf(feature).some(v => active.has(v));
@@ -329,8 +411,8 @@ function visibleFeatures() {
   const q = state.query.toLowerCase();
   const groups = filterGroups();
   return allFeatures().filter(f =>
-    (!state.selectedArea || f.area === state.selectedArea) &&
-    (!q || f.name.toLowerCase().includes(q) || AREA_NAMES[f.area].toLowerCase().includes(q)) &&
+    (isPublicCategory(f.category) || !state.selectedArea || f.area === state.selectedArea) &&
+    (!q || f.name.toLowerCase().includes(q) || areaLabel(f).toLowerCase().includes(q)) &&
     groups.every(g => groupPasses(g, f))
   );
 }
@@ -353,6 +435,56 @@ function drawnBoundaries() {
     .map(b => ({ ...b, match: areaPassesPopulation(b.area) }));
 }
 
+/* ---------- location search (Photon, OpenStreetMap) ---------- */
+
+// Photon rather than Google: no API key, no billing, and the page already carries OSM
+// attribution from the tile layer. Nominatim would also work but caps at 1 req/sec and
+// forbids commercial use on its public instance.
+const GEO_ENDPOINT = 'https://photon.komoot.io/api';
+const GEO_BIAS = { lat: -6.2, lon: 106.9 };   // Jabodetabek, so "Bekasi" resolves locally
+const GEO_MIN_CHARS = 3;
+const PLACE_ICON = '<svg class="cat-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
+
+let geoTimer = null;
+let geoAbort = null;
+
+function scheduleGeocode(query) {
+  clearTimeout(geoTimer);
+  if (geoAbort) { geoAbort.abort(); geoAbort = null; }
+  if (query.length < GEO_MIN_CHARS) {
+    state.geoResults = [];
+    renderResults(visibleFeatures());
+    return;
+  }
+  geoTimer = setTimeout(() => runGeocode(query), 300);
+}
+
+function toGeoResult(feature) {
+  const coords = feature.geometry && feature.geometry.coordinates;
+  if (!coords || coords.length < 2) return null;
+  const p = feature.properties || {};
+  const detail = [p.street, p.district, p.city, p.county, p.state, p.country].filter(Boolean).join(', ');
+  const name = p.name || p.street || detail || 'Tanpa nama';
+  return { name, detail: detail || 'Lokasi', latlng: [coords[1], coords[0]] };
+}
+
+async function runGeocode(query) {
+  geoAbort = new AbortController();
+  const url = `${GEO_ENDPOINT}?q=${encodeURIComponent(query)}&lat=${GEO_BIAS.lat}&lon=${GEO_BIAS.lon}&limit=5`;
+  try {
+    const response = await fetch(url, { signal: geoAbort.signal });
+    if (!response.ok) throw new Error('geocoder unavailable');
+    const data = await response.json();
+    state.geoResults = (data.features || []).map(toGeoResult).filter(Boolean);
+  } catch (error) {
+    // Offline, rate-limited or superseded: local search must keep working regardless,
+    // so this degrades to facilities-only rather than surfacing an error.
+    if (error.name === 'AbortError') return;
+    state.geoResults = [];
+  }
+  renderResults(visibleFeatures());
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
@@ -369,15 +501,19 @@ function readStored(key, fallback) {
 // Seed-if-absent: with no stored key the KMZ is the source and gets persisted as the
 // working copy; once the key exists it is authoritative, so deletions survive a reload.
 function loadManualFeatures() {
-  const saved = readStored(STORAGE_KEY, null);
+  const saved = readStored(storeKey(STORAGE_KEY), null);
   if (saved === null) { saveManualFeatures(); return; }
-  state.manualFeatures = Array.isArray(saved) ? saved.filter(f => f && AREA_NAMES[f.area] && CATEGORY_META[f.category] && Array.isArray(f.latlng)) : [];
+  // A public facility legitimately has no area, so the area check is conditional —
+  // an unconditional one silently dropped those pins on every reload.
+  state.manualFeatures = Array.isArray(saved) ? saved.filter(f =>
+    f && CATEGORY_META[f.category] && Array.isArray(f.latlng) &&
+    (isPublicCategory(f.category) ? !f.area : !!AREA_NAMES[f.area])) : [];
 }
 
-function saveManualFeatures() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.manualFeatures)); }
+function saveManualFeatures() { localStorage.setItem(storeKey(STORAGE_KEY), JSON.stringify(state.manualFeatures)); }
 
 function loadComplexes() {
-  const saved = readStored(COMPLEX_KEY, null);
+  const saved = readStored(storeKey(COMPLEX_KEY), null);
   if (saved === null) { saveComplexes(); return; }
   state.complexes = Array.isArray(saved)
     ? saved.filter(c => c && AREA_NAMES[c.area] && Array.isArray(c.latlng) && Array.isArray(c.catalog))
@@ -385,12 +521,12 @@ function loadComplexes() {
     : [];
 }
 
-function saveComplexes() { localStorage.setItem(COMPLEX_KEY, JSON.stringify(state.complexes)); }
+function saveComplexes() { localStorage.setItem(storeKey(COMPLEX_KEY), JSON.stringify(state.complexes)); }
 
 // Merged OVER whatever the KMZ supplied rather than replacing it, so a manual edit
 // wins but an empty localStorage never wipes the imported figures.
 function loadAreaPopulation() {
-  const saved = readStored(POPULATION_KEY, {});
+  const saved = readStored(storeKey(POPULATION_KEY), {});
   if (!saved || typeof saved !== 'object') return;
   Object.keys(AREA_NAMES).forEach(key => {
     const raw = saved[key];
@@ -400,10 +536,10 @@ function loadAreaPopulation() {
   });
 }
 
-function saveAreaPopulation() { localStorage.setItem(POPULATION_KEY, JSON.stringify(state.areaPopulation)); }
+function saveAreaPopulation() { localStorage.setItem(storeKey(POPULATION_KEY), JSON.stringify(state.areaPopulation)); }
 
 function loadCustomGroups() {
-  const saved = readStored(GROUPS_KEY, null);
+  const saved = readStored(storeKey(GROUPS_KEY), null);
   if (saved !== null) {
     state.customGroups = Array.isArray(saved)
       ? saved.filter(g => g && g.id && g.label && Array.isArray(g.options))
@@ -418,7 +554,7 @@ function loadCustomGroups() {
   });
 }
 
-function saveCustomGroups() { localStorage.setItem(GROUPS_KEY, JSON.stringify(state.customGroups)); }
+function saveCustomGroups() { localStorage.setItem(storeKey(GROUPS_KEY), JSON.stringify(state.customGroups)); }
 
 function makeMarker(feature) {
   const meta = CATEGORY_META[feature.category] || CATEGORY_META.Other;
@@ -432,7 +568,7 @@ function makeMarker(feature) {
   return L.marker(feature.latlng, { icon, title: feature.name }).bindPopup(
     `<div class="popup-category" style="color:${meta.color}">${meta.label}</div>` +
     `<h3 class="popup-name">${escapeHtml(feature.name)}</h3>` +
-    `<div class="popup-area">${AREA_NAMES[feature.area]}${badge}</div>` +
+    `<div class="popup-area">${escapeHtml(areaLabel(feature))}${badge}</div>` +
     (isComplex ? catalogSummary(feature) : '') +
     (isComplex || feature.manual
       ? `<button class="popup-edit" data-edit-id="${escapeHtml(feature.id)}">${isComplex ? 'Edit perumahan' : 'Edit pin / logo'}</button>`
@@ -477,19 +613,37 @@ function renderMap() {
 
 function renderResults(features) {
   const list = document.getElementById('resultList');
-  if (!features.length) {
-    list.innerHTML = '<div class="empty">Tidak ada fasilitas yang cocok dengan filter.</div>';
-    return;
-  }
-  list.innerHTML = features.sort((a,b) => a.name.localeCompare(b.name)).map(f => {
+  const parts = [];
+  // The "Fasilitas" heading only earns its place once a second section exists.
+  if (features.length && state.geoResults.length) parts.push('<div class="result-section-head">Fasilitas</div>');
+  if (features.length) parts.push(features.sort((a,b) => a.name.localeCompare(b.name)).map(f => {
     const meta = CATEGORY_META[f.category] || CATEGORY_META.Other;
     return `<button class="result-item" data-id="${f.id}">
       <span class="result-icon" style="background:${meta.color}">${f.logo ? `<img src="${escapeHtml(f.logo)}" alt="" />` : categoryIcon(meta)}</span>
-      <span><strong>${escapeHtml(f.name)}</strong><small>${AREA_NAMES[f.area]} · ${meta.label}${f.manual ? ' · Manual' : ''}</small></span>
+      <span><strong>${escapeHtml(f.name)}</strong><small>${escapeHtml(areaLabel(f))} · ${meta.label}${f.manual ? ' · Manual' : ''}</small></span>
       <span class="result-arrow">›</span>
     </button>`;
-  }).join('');
-  list.querySelectorAll('.result-item').forEach(btn => btn.addEventListener('click', () => {
+  }).join(''));
+  if (state.geoResults.length) {
+    parts.push('<div class="result-section-head">Lokasi</div>');
+    parts.push(state.geoResults.map((hit, i) => `<button class="result-item" data-geo="${i}">
+      <span class="result-icon geo-icon">${PLACE_ICON}</span>
+      <span><strong>${escapeHtml(hit.name)}</strong><small>${escapeHtml(hit.detail)}</small></span>
+      <span class="result-arrow">›</span>
+    </button>`).join(''));
+  }
+  if (!parts.length) parts.push('<div class="empty">Tidak ada fasilitas yang cocok dengan filter.</div>');
+  list.innerHTML = parts.join('');
+
+  list.querySelectorAll('[data-geo]').forEach(btn => btn.addEventListener('click', () => {
+    const hit = state.geoResults[Number(btn.dataset.geo)];
+    if (!hit) return;
+    // Flies only — a location result is a place to look at, not a pin.
+    map.flyTo(hit.latlng, 16, { duration: .8 });
+    document.getElementById('sidebar').classList.remove('open');
+  }));
+
+  list.querySelectorAll('.result-item[data-id]').forEach(btn => btn.addEventListener('click', () => {
     // allFeatures(), not state.features — manual pins and complexes are clickable too.
     const feature = allFeatures().find(f => f.id === btn.dataset.id);
     const marker = markerById.get(btn.dataset.id);
@@ -517,7 +671,7 @@ function renderDeveloperList() {
     // is invalid HTML and the inner one would not receive clicks reliably.
     return `<div class="developer-item">
       <button class="developer-button" data-area="${escapeHtml(key)}"><span class="dev-code">${key === 'Metland' ? 'MTL' : escapeHtml(key)}</span><span>${escapeHtml(label)}<small>${meta}</small></span></button>
-      <button class="developer-more" data-pop-area="${escapeHtml(key)}" title="Set populasi ${escapeHtml(label)}" aria-label="Set populasi ${escapeHtml(label)}">
+      <button class="developer-more admin-only" data-pop-area="${escapeHtml(key)}" title="Set populasi ${escapeHtml(label)}" aria-label="Set populasi ${escapeHtml(label)}">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
       </button>
     </div>`;
@@ -586,6 +740,12 @@ function toggleMulti(groupId) {
   renderFilterGroups(); renderMap();
 }
 
+function syncModeControl() {
+  document.querySelectorAll('[data-mode]').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.mode === state.mode));
+  document.getElementById('modeNote').textContent = MODES[state.mode].label;
+}
+
 function syncControls() {
   document.querySelectorAll('.developer-button').forEach(btn => btn.classList.toggle('active', btn.dataset.area === state.selectedArea));
   document.getElementById('mapTitle').textContent = state.selectedArea ? AREA_NAMES[state.selectedArea] : 'Semua kawasan';
@@ -607,9 +767,29 @@ function fitVisible({ animate = false } = {}) {
   else map.fitBounds(bounds, options);
 }
 
-async function loadData() {
+// Everything parsed from a KMZ or loaded from its mode's storage, cleared so switching
+// mode cannot leave the previous dataset's pins, boundaries or groups behind.
+function resetDataset() {
+  state.features = []; state.boundaries = []; state.manualFeatures = []; state.complexes = [];
+  state.areaPopulation = {}; state.kmzPopulation = {}; state.customGroups = [];
+  state.kmlDoc = null; state.kmlName = 'doc.kml'; state.kmzExtras = {};
+  Object.values(state.filters).forEach(set => set.clear());
+  state.selectedArea = null;
+  clearDirty();
+}
+
+async function loadData(mode = state.mode) {
+  state.mode = mode;
+  localStorage.setItem(MODE_KEY, mode);
+  resetDataset();
+  syncModeControl();
+  document.getElementById('errorCard').classList.add('hidden');
+  document.getElementById('loading').classList.remove('hidden');
   try {
-    const response = await fetch('data/facility-mapping.kmz');
+    // Server copy wins; the bundled file is the fallback for a plain static deploy.
+    const hosted = state.manifest && state.manifest.urls[`kmz:${mode}`];
+    if (state.manifest) state.serverVersion = state.manifest.versions[mode] ?? null;
+    const response = await fetch(hosted ? `${hosted}?_=${Date.now()}` : MODES[mode].kmz);
     if (!response.ok) throw new Error('KMZ tidak ditemukan');
     const zip = await JSZip.loadAsync(await response.arrayBuffer());
     const kmlFile = zip.file('doc.kml') || Object.values(zip.files).find(f => f.name.endsWith('.kml'));
@@ -637,13 +817,28 @@ async function loadData() {
       });
     }
 
-    loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
+    const served = await fetchServerState(mode);
+    if (!applyServerState(served)) {
+      // No backend, or nothing stored for this mode yet: localStorage remains the source.
+      loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
+    }
     renderControls(); renderMap(); fitVisible();
     document.getElementById('loading').classList.add('hidden');
   } catch (error) {
     console.error(error);
     document.getElementById('loading').classList.add('hidden');
-    document.getElementById('errorCard').classList.remove('hidden');
+    // An absent dataset for a mode is an empty map with its controls still usable, not a
+    // dead end — the admin has simply not uploaded that KMZ yet.
+    loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
+    renderControls(); renderMap();
+    const missing = /tidak ditemukan/.test(error.message);
+    document.getElementById('errorTitle').textContent = missing
+      ? `Dataset ${MODES[state.mode].label} belum tersedia`
+      : 'Peta belum dapat dimuat';
+    document.getElementById('errorDetail').textContent = missing
+      ? 'Unggah berkas KMZ untuk mode ini, atau kembali ke mode lain.'
+      : 'Periksa koneksi lalu muat ulang halaman.';
+    document.getElementById('errorCard').classList.toggle('hidden', allFeatures().length > 0);
   }
 }
 
@@ -675,8 +870,39 @@ function openPinDialog(feature = null, latlng = null) {
   state.draftLogo = feature?.logo || '';
   updateLogoPreview();
   renderCustomGroupSelects('pinCustomGroups', feature?.custom || {});
+  renderTransitFields(feature?.transport);
+  syncPinCategoryFields();
   document.getElementById('deletePin').classList.toggle('hidden', !feature);
   document.getElementById('pinDialog').showModal();
+}
+
+// A public facility has no developer, so the field is removed rather than merely
+// ignored. `required` has to come off with it: Chrome refuses to submit a form whose
+// invalid control is not focusable, and shows the user nothing at all.
+function syncPinCategoryFields() {
+  const category = document.getElementById('pinCategory').value;
+  const isPublic = isPublicCategory(category);
+  const select = document.getElementById('pinArea');
+  document.getElementById('pinAreaField').classList.toggle('hidden', isPublic);
+  select.required = !isPublic;
+  select.disabled = isPublic;
+  document.getElementById('pinTransitField').classList.toggle('hidden', category !== TRANSIT_CATEGORY);
+}
+
+function renderTransitFields(transport) {
+  const chosen = new Set((transport && transport.operators) || []);
+  const type = (transport && transport.type) || '';
+  document.getElementById('pinTransitType').innerHTML =
+    `<option value="">— pilih tipe —</option>` + TRANSIT_TYPES.map(t =>
+      `<option value="${escapeHtml(t.id)}"${type === t.id ? ' selected' : ''}>${escapeHtml(t.label)}</option>`).join('');
+  document.getElementById('pinTransitOperators').innerHTML = TRANSIT_OPERATORS.map(o =>
+    `<label class="operator-chip"><input type="checkbox" value="${escapeHtml(o.id)}"${chosen.has(o.id) ? ' checked' : ''} />${escapeHtml(o.label)}</label>`).join('');
+}
+
+function readTransitFields() {
+  const type = document.getElementById('pinTransitType').value;
+  const operators = [...document.querySelectorAll('#pinTransitOperators input:checked')].map(i => i.value);
+  return (type || operators.length) ? { type: type || null, operators } : null;
 }
 
 function closePinDialog() { document.getElementById('pinDialog').close(); }
@@ -853,6 +1079,173 @@ function openPopulationDialog(area) {
 
 function closePopulationDialog() { document.getElementById('populationDialog').close(); }
 
+/* ---------- backend: role, server state, polling ---------- */
+
+const ADMIN_HEADERS = { 'X-Requested-With': 'pm-admin' };
+const POLL_MS = 30_000;
+let pollTimer = null;
+let pushTimer = null;
+
+// Every one of these degrades to "no backend": opened as a plain static site, or before
+// the API is deployed, the app keeps working exactly as it did with localStorage only.
+async function apiJson(path, options = {}) {
+  try {
+    const response = await fetch(path, { credentials: 'same-origin', ...options });
+    if (!response.ok) return null;
+    return response.status === 204 ? {} : await response.json();
+  } catch { return null; }
+}
+
+function hasBackend() { return !!state.manifest; }
+
+function setRole(role) {
+  state.role = role;
+  document.body.dataset.role = role;
+  const button = document.getElementById('authButton');
+  button.textContent = role === 'admin' ? 'Keluar dari admin' : 'Masuk sebagai admin';
+}
+
+async function loadManifest() {
+  state.manifest = await apiJson('/api/manifest');
+  if (state.manifest) state.serverVersion = state.manifest.versions[state.mode] ?? null;
+}
+
+async function loadRole() {
+  const me = await apiJson('/api/me');
+  setRole(me && me.admin ? 'admin' : 'viewer');
+}
+
+/** The four collections the server owns. Boundaries and facilities come from the KMZ. */
+function collectState() {
+  return {
+    manualFeatures: state.manualFeatures,
+    complexes: state.complexes,
+    areaPopulation: state.areaPopulation,
+    customGroups: state.customGroups
+  };
+}
+
+function applyServerState(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (Array.isArray(data.manualFeatures)) state.manualFeatures = data.manualFeatures;
+  if (Array.isArray(data.complexes)) {
+    state.complexes = data.complexes.map(c => ({ ...c, kind: 'complex', category: 'Housing Complex' }));
+  }
+  if (data.areaPopulation && typeof data.areaPopulation === 'object') {
+    Object.keys(AREA_NAMES).forEach(area => {
+      const parsed = normalizePopulation(data.areaPopulation[area]);
+      if (parsed) state.areaPopulation[area] = parsed;
+    });
+  }
+  if (Array.isArray(data.customGroups)) {
+    state.customGroups = data.customGroups;
+    state.customGroups.forEach(g => {
+      if (!state.filters[g.id]) state.filters[g.id] = new Set();
+      if (state.multi[g.id] === undefined) state.multi[g.id] = true;
+    });
+  }
+  return true;
+}
+
+async function fetchServerState(mode) {
+  if (!hasBackend()) return null;
+  let url = state.manifest.urls[`state:${mode}`];
+  if (!url) {
+    // The manifest is a snapshot taken at boot. The first write for a mode creates its
+    // blob, so a URL that was null then is not null now — refresh before giving up, or
+    // polling could never see that mode's data without a page reload.
+    await loadManifest();
+    url = state.manifest && state.manifest.urls[`state:${mode}`];
+  }
+  if (!url) return null;
+  // Cache-busted: the CDN holds the previous copy for up to propagationSeconds.
+  try {
+    const response = await fetch(`${url}?_=${Date.now()}`, { cache: 'no-store' });
+    return response.ok ? await response.json() : null;
+  } catch { return null; }
+}
+
+// Admin writes are coalesced: a burst of edits becomes one POST.
+function pushStateSoon() {
+  if (state.role !== 'admin' || !hasBackend()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushState, 800);
+}
+
+async function pushState() {
+  if (state.role !== 'admin' || !hasBackend()) return;
+  const result = await apiJson(`/api/state?mode=${encodeURIComponent(state.mode)}`, {
+    method: 'POST',
+    headers: { ...ADMIN_HEADERS, 'Content-Type': 'application/json' },
+    body: JSON.stringify(collectState())
+  });
+  if (result && typeof result.version === 'number') {
+    state.serverVersion = result.version;      // our own bump must not trigger a refresh
+    // The blob now exists where it may not have at boot; pick up its URL.
+    if (!state.manifest.urls[`state:${state.mode}`]) await loadManifest();
+    setStatusNote('Perubahan tersimpan di server.');
+  } else {
+    setStatusNote('Gagal menyimpan ke server — perubahan tetap tersimpan di browser ini.');
+  }
+}
+
+function setStatusNote(text) {
+  const note = document.getElementById('storageNote');
+  if (note) note.textContent = text;
+}
+
+/**
+ * Re-reads this mode's data without disturbing the map: filters, the selected developer
+ * and the viewport all survive, so a viewer reading the map does not get yanked around
+ * when an admin saves.
+ */
+async function refreshFromServer() {
+  const data = await fetchServerState(state.mode);
+  if (!applyServerState(data)) return;
+  renderControls();
+  renderMap();
+  setStatusNote('Data diperbarui oleh admin.');
+}
+
+function startPolling() {
+  if (!hasBackend() || pollTimer) return;
+  pollTimer = setInterval(async () => {
+    // A hidden tab polls nothing; it catches up on the next visible tick.
+    if (document.visibilityState !== 'visible') return;
+    let url = state.manifest.urls.version;
+    if (!url) {
+      await loadManifest();
+      url = state.manifest && state.manifest.urls.version;
+      if (!url) return;
+    }
+    let versions;
+    try {
+      const response = await fetch(`${url}?_=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) return;
+      versions = await response.json();
+    } catch { return; }
+    const next = versions[state.mode];
+    if (typeof next !== 'number' || next === state.serverVersion) return;
+    state.serverVersion = next;
+    await refreshFromServer();
+  }, POLL_MS);
+}
+
+async function uploadKmz(file) {
+  if (state.role !== 'admin' || !hasBackend()) return;
+  setStatusNote('Mengunggah KMZ…');
+  const result = await apiJson(`/api/upload?mode=${encodeURIComponent(state.mode)}`, {
+    method: 'POST',
+    headers: { ...ADMIN_HEADERS, 'Content-Type': 'application/vnd.google-earth.kmz' },
+    body: file
+  });
+  if (!result) { setStatusNote('Gagal mengunggah KMZ.'); return; }
+  state.serverVersion = result.version;
+  await loadManifest();
+  await loadData(state.mode);
+  setStatusNote('KMZ diperbarui. Pengunjung lain melihat perubahan dalam ~1 menit.');
+}
+
 /* ---------- KMZ write-back ---------- */
 
 let kmzFileHandle = null;   // held so the second save in a session needs no picker
@@ -860,6 +1253,8 @@ let kmzFileHandle = null;   // held so the second save in a session needs no pic
 function markDirty() {
   state.dirty = true;
   document.getElementById('kmzDirty').classList.remove('hidden');
+  // Admin edits propagate to viewers; a no-op for a viewer or with no backend.
+  pushStateSoon();
 }
 
 function clearDirty() {
@@ -875,12 +1270,15 @@ function buildOwnPlacemark(doc, feature, kind) {
   point.appendChild(kmlEl(doc, 'coordinates', `${feature.latlng[1]},${feature.latlng[0]},0`));
   placemark.appendChild(point);
   const entries = {
-    kind, id: feature.id, area: feature.area,
+    kind, id: feature.id, area: feature.area || '',
     custom: JSON.stringify(feature.custom || {}),
     logo: feature.logo || ''
   };
   if (kind === 'housing-complex') entries.catalog = JSON.stringify(feature.catalog || []);
-  else entries.category = feature.category;
+  else {
+    entries.category = feature.category;
+    if (feature.transport) entries.transport = JSON.stringify(feature.transport);
+  }
   setPmData(doc, placemark, entries);
   return placemark;
 }
@@ -889,11 +1287,13 @@ function appendAreaGrouped(doc, parent, label, items, kind) {
   if (!items.length) return;
   const section = kmlEl(doc, 'Folder');
   section.appendChild(kmlEl(doc, 'name', label));
-  Object.keys(AREA_NAMES).forEach(area => {
-    const inArea = items.filter(item => item.area === area);
+  // The trailing null bucket is not optional: a public facility has no area, and
+  // iterating AREA_NAMES alone dropped it from the export with no error at all.
+  [...Object.keys(AREA_NAMES), null].forEach(area => {
+    const inArea = items.filter(item => (item.area || null) === area);
     if (!inArea.length) return;
     const areaFolder = kmlEl(doc, 'Folder');
-    areaFolder.appendChild(kmlEl(doc, 'name', area));
+    areaFolder.appendChild(kmlEl(doc, 'name', area || PM_PUBLIC_FOLDER));
     inArea.forEach(item => areaFolder.appendChild(buildOwnPlacemark(doc, item, kind)));
     section.appendChild(areaFolder);
   });
@@ -1143,6 +1543,7 @@ map.on('movestart zoomstart', closeAreaMenu);
 // or the map receives the event first — the previous per-polygon binding opened the menu
 // and a map-level close handler immediately hid it again.
 map.on('contextmenu', event => {
+  if (state.role !== 'admin') return;
   const area = areaAt(event.latlng);
   if (!area) { closeAreaMenu(); return; }
   L.DomEvent.preventDefault(event.originalEvent);
@@ -1272,8 +1673,8 @@ document.getElementById('resetPopulation').addEventListener('click', () => {
   if (!original) return;
   state.areaPopulation[area] = original;
   // Dropped from the override store so the KMZ stays authoritative on reload.
-  const saved = readStored(POPULATION_KEY, {});
-  if (saved && typeof saved === 'object') { delete saved[area]; localStorage.setItem(POPULATION_KEY, JSON.stringify(saved)); }
+  const saved = readStored(storeKey(POPULATION_KEY), {});
+  if (saved && typeof saved === 'object') { delete saved[area]; localStorage.setItem(storeKey(POPULATION_KEY), JSON.stringify(saved)); }
   markDirty(); closePopulationDialog(); renderControls(); renderMap();
 });
 document.getElementById('addPinButton').addEventListener('click', () => { setAddMode(true); document.getElementById('sidebar').classList.remove('open'); });
@@ -1304,6 +1705,7 @@ map.on('click', e => {
 });
 document.getElementById('closePinDialog').addEventListener('click', closePinDialog);
 document.getElementById('cancelPin').addEventListener('click', closePinDialog);
+document.getElementById('pinCategory').addEventListener('change', syncPinCategoryFields);
 document.getElementById('removeLogo').addEventListener('click', () => { state.draftLogo = ''; updateLogoPreview(); });
 document.getElementById('pinLogo').addEventListener('change', event => {
   const file = event.target.files[0];
@@ -1315,8 +1717,20 @@ document.getElementById('pinLogo').addEventListener('change', event => {
 });
 document.getElementById('pinForm').addEventListener('submit', event => {
   event.preventDefault();
-  const id = document.getElementById('pinId').value || `manual-${Date.now()}`;
-  const feature = { id, manual: true, name: document.getElementById('pinName').value.trim(), area: document.getElementById('pinArea').value, category: document.getElementById('pinCategory').value, latlng: [Number(document.getElementById('pinLat').value), Number(document.getElementById('pinLng').value)], logo: state.draftLogo, custom: readCustomGroupSelects('pinCustomGroups') };
+  // randomUUID, not Date.now(): two pins created in the same millisecond collided on id
+  // and the second silently overwrote the first. Complexes and groups already use this.
+  const id = document.getElementById('pinId').value || `manual-${crypto.randomUUID()}`;
+  const category = document.getElementById('pinCategory').value;
+  const feature = {
+    id, manual: true,
+    name: document.getElementById('pinName').value.trim(),
+    area: isPublicCategory(category) ? null : document.getElementById('pinArea').value,
+    category,
+    latlng: [Number(document.getElementById('pinLat').value), Number(document.getElementById('pinLng').value)],
+    logo: state.draftLogo,
+    custom: readCustomGroupSelects('pinCustomGroups'),
+    transport: category === TRANSIT_CATEGORY ? readTransitFields() : null
+  };
   if (!feature.name || feature.latlng.some(n => !Number.isFinite(n))) return;
   const index = state.manualFeatures.findIndex(f => f.id === id);
   if (index >= 0) state.manualFeatures[index] = feature; else state.manualFeatures.push(feature);
@@ -1330,10 +1744,75 @@ document.getElementById('deletePin').addEventListener('click', () => {
   saveManualFeatures(); markDirty(); closePinDialog(); renderControls(); renderMap();
 });
 
-document.getElementById('searchInput').addEventListener('input', e => { state.query = e.target.value.trim(); renderMap(); });
+document.getElementById('searchInput').addEventListener('input', e => {
+  state.query = e.target.value.trim();
+  renderMap();                      // local filtering stays instant on every keystroke
+  scheduleGeocode(state.query);     // the network part is debounced
+});
 document.getElementById('showAllDevelopers').addEventListener('click', () => { state.selectedArea = null; syncControls(); renderMap(); fitVisible({ animate: true }); });
 document.getElementById('fitMap').addEventListener('click', () => fitVisible({ animate: true }));
+document.getElementById('authButton').addEventListener('click', async () => {
+  if (state.role === 'admin') {
+    await apiJson('/api/logout', { method: 'POST', headers: ADMIN_HEADERS });
+    setRole('viewer');
+    setStatusNote('Keluar dari mode admin.');
+    return;
+  }
+  if (!hasBackend()) { setStatusNote('Server admin belum tersedia pada deploy ini.'); return; }
+  document.getElementById('loginHint').textContent = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginDialog').showModal();
+});
+
+document.getElementById('closeLoginDialog').addEventListener('click', () => document.getElementById('loginDialog').close());
+document.getElementById('cancelLogin').addEventListener('click', () => document.getElementById('loginDialog').close());
+
+document.getElementById('loginForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = document.getElementById('loginSubmit');
+  const hint = document.getElementById('loginHint');
+  button.disabled = true;
+  hint.classList.remove('error');
+  hint.textContent = 'Memeriksa…';
+  const response = await fetch('/api/login', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { ...ADMIN_HEADERS, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: document.getElementById('loginPassword').value })
+  }).catch(() => null);
+  button.disabled = false;
+  if (response && response.ok) {
+    hint.textContent = '';
+    document.getElementById('loginDialog').close();
+    setRole('admin');
+    setStatusNote('Masuk sebagai admin.');
+    return;
+  }
+  hint.classList.add('error');
+  hint.textContent = response && response.status === 429
+    ? 'Terlalu banyak percobaan. Coba lagi sebentar.'
+    : 'Kata sandi salah.';
+});
+
+document.getElementById('uploadKmz').addEventListener('change', async event => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (file) await uploadKmz(file);
+});
+
+document.querySelector('.mode-switch').addEventListener('click', event => {
+  const btn = event.target.closest('[data-mode]');
+  // Re-entrant: loadData resets every collection and re-parses the other dataset.
+  if (btn && btn.dataset.mode !== state.mode) loadData(btn.dataset.mode);
+});
+
 document.getElementById('openSidebar').addEventListener('click', () => document.getElementById('sidebar').classList.add('open'));
 document.getElementById('closeSidebar').addEventListener('click', () => document.getElementById('sidebar').classList.remove('open'));
 
-loadData();
+(async function boot() {
+  setRole('viewer');
+  await loadManifest();
+  await loadRole();
+  const remembered = localStorage.getItem(MODE_KEY);
+  await loadData(MODES[remembered] ? remembered : DEFAULT_MODE);
+  startPolling();
+})();

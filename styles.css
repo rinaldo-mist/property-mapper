@@ -33,6 +33,13 @@ button { cursor: pointer; }
 .search-wrap:focus-within { border-color: var(--green-2); box-shadow: 0 0 0 3px rgba(43,113,82,.11); background: white; }
 .search-wrap span { color: var(--muted); font-size: 20px; }
 .search-wrap input { border: 0; outline: 0; width: 100%; background: transparent; font-size: 14px; color: var(--ink); }
+.mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #eef1ee; border-radius: 12px; padding: 4px; }
+.mode-option { border: 0; background: transparent; border-radius: 9px; padding: 9px 10px; font: 700 12px Manrope; letter-spacing: .02em; color: #6b756f; transition: .18s; }
+.mode-option:hover:not(.active) { color: var(--ink); }
+.mode-option.active { background: white; color: var(--green); box-shadow: 0 2px 6px rgba(20,40,28,.1); }
+.mode-note { display: block; margin-top: 7px; font-size: 11px; color: var(--muted); }
+.mode-note strong { color: #56605a; }
+
 .section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
 .section-heading h2 { font: 700 12px Manrope; letter-spacing: .08em; text-transform: uppercase; margin: 0; color: #56605a; }
 .section-heading > span { font-size: 12px; color: var(--muted); }
@@ -78,12 +85,22 @@ button { cursor: pointer; }
 .result-item strong { display: block; font-size: 14px; line-height: 1.25; }
 .result-item small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
 .result-arrow { color: #a5ada8; }
+.result-section-head { font: 700 10px Manrope; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 12px 7px 5px; position: sticky; top: 0; background: var(--panel); }
+.result-section-head:first-child { padding-top: 2px; }
+.geo-icon { background: #eef1ee; color: var(--green); }
+
 .empty { padding: 26px 12px; color: var(--muted); font-size: 13px; text-align: center; }
 /* Sticky so "Tambah pin manual" stays reachable no matter how far the list scrolls. */
 footer { border-top: 1px solid var(--line); padding: 12px 20px; color: var(--muted); font-size: 11px; position: sticky; bottom: 0; background: rgba(255,255,255,.98); backdrop-filter: blur(6px); flex-shrink: 0; }
 .admin-button { width: 100%; border: 0; border-radius: 10px; padding: 10px 12px; background: var(--green); color: white; font-weight: 700; margin-bottom: 9px; }
 .admin-button.ghost { background: #eef1ee; color: var(--ink); }
 .admin-button:disabled { opacity: .55; cursor: progress; }
+.upload-button { display: block; text-align: center; cursor: pointer; }
+.upload-button input { display: none; }
+/* Hidden rather than disabled: a viewer should not see controls they cannot use. */
+body[data-role="viewer"] .admin-only { display: none !important; }
+.sync-note { color: var(--green-2); }
+
 .dirty-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e0912f; margin-left: 7px; vertical-align: middle; }
 .admin-button.ghost:hover { background: #e4e9e4; }
 .storage-note { display: block; }
@@ -143,6 +160,19 @@ footer { border-top: 1px solid var(--line); padding: 12px 20px; color: var(--mut
 .option-row { display: flex; gap: 8px; align-items: center; }
 .pin-dialog .group-editor input { margin-bottom: 0; min-height: 38px; background: white; }
 .add-group { display: inline-block; margin-top: 2px; }
+
+.transit-field { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 13px; background: #fafbf9; }
+.transit-field > label { margin-bottom: 10px; }
+.transit-field select { background: white; }
+.field-label { display: block; color: #56605a; font-size: 13px; font-weight: 700; margin-bottom: 7px; }
+.operator-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.operator-chip { position: relative; display: inline-flex; align-items: center; border: 1px solid var(--line); background: white; border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 500; color: #56605a; cursor: pointer; transition: .15s; margin: 0; }
+.operator-chip:hover { border-color: #bdc8c1; }
+.operator-chip:has(input:checked) { background: var(--green); border-color: var(--green); color: white; }
+.operator-chip:has(input:focus-visible) { outline: 2px solid var(--green-2); outline-offset: 2px; }
+/* Visually hidden but still focusable: .pin-dialog input would otherwise style these as
+   full-width 42px fields, and the chip itself already shows the checked state. */
+.operator-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; padding: 0; margin: 0; border: 0; }
 
 .form-hint { font-size: 12px; color: var(--muted); margin: 9px 0 0; }
 .form-hint.error { color: #c2464a; }

@@ -1,0 +1,13 @@
+# Dependencies — installed by Vercel at build time from package-lock.json
+node_modules/
+
+# Secrets. .env holds a generated JWT secret from the refactor work; never commit it.
+.env
+.env.local
+.env*.local
+
+# Vercel
+.vercel/
+
+# Local store used by `vercel dev` / tests when PM_LOCAL_STORE is set
+.data/

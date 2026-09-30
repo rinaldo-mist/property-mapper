@@ -31,6 +31,14 @@
       </section>
 
       <section class="control-section">
+        <div class="mode-switch" role="group" aria-label="Mode data">
+          <button type="button" class="mode-option" data-mode="residential">Residential</button>
+          <button type="button" class="mode-option" data-mode="industrial">Industrial</button>
+        </div>
+        <span class="mode-note">Dataset: <strong id="modeNote">Residential</strong></span>
+      </section>
+
+      <section class="control-section">
         <div class="section-heading">
           <h2>Developer</h2>
           <button id="showAllDevelopers" class="text-button">Tampilkan semua</button>
@@ -54,10 +62,12 @@
       </section>
 
       <footer>
-        <button class="admin-button" id="addPinButton">＋ Tambah pin manual</button>
-        <button class="admin-button" id="addComplexButton">＋ Tambah perumahan</button>
-        <button class="admin-button ghost" id="manageGroupsButton">Kelola kategori</button>
-        <button class="admin-button ghost" id="saveKmzButton">Simpan ke KMZ<span class="dirty-dot hidden" id="kmzDirty" title="Ada perubahan yang belum disimpan"></span></button>
+        <button class="admin-button admin-only" id="addPinButton">＋ Tambah pin manual</button>
+        <button class="admin-button admin-only" id="addComplexButton">＋ Tambah perumahan</button>
+        <button class="admin-button ghost admin-only" id="manageGroupsButton">Kelola kategori</button>
+        <button class="admin-button ghost admin-only" id="saveKmzButton">Simpan ke KMZ<span class="dirty-dot hidden" id="kmzDirty" title="Ada perubahan yang belum disimpan"></span></button>
+        <label class="admin-button ghost admin-only upload-button" id="uploadKmzLabel">Unggah KMZ ke server<input type="file" id="uploadKmz" accept=".kmz,.kml,application/vnd.google-earth.kmz" /></label>
+        <button class="admin-button ghost" id="authButton">Masuk sebagai admin</button>
         <span class="storage-note"><span class="status-dot"></span><span id="storageNote">Perubahan tersimpan di browser ini — simpan ke KMZ untuk dibagikan</span></span>
       </footer>
     </aside>
@@ -81,8 +91,8 @@
         <span>Membaca data KMZ…</span>
       </div>
       <div class="error-card hidden" id="errorCard">
-        <strong>Peta belum dapat dimuat</strong>
-        <span>Periksa koneksi lalu muat ulang halaman.</span>
+        <strong id="errorTitle">Peta belum dapat dimuat</strong>
+        <span id="errorDetail">Periksa koneksi lalu muat ulang halaman.</span>
       </div>
     </section>
   </main>
@@ -92,7 +102,12 @@
       <div class="dialog-head"><div><span class="eyebrow">PIN MANUAL</span><h2 id="dialogTitle">Tambah fasilitas</h2></div><button type="button" class="dialog-close" id="closePinDialog" aria-label="Tutup">×</button></div>
       <input type="hidden" id="pinId" />
       <label>Nama fasilitas<input id="pinName" required maxlength="100" placeholder="Contoh: Dealer ABC" /></label>
-      <div class="form-grid"><label>Developer<select id="pinArea" required></select></label><label>Kategori<select id="pinCategory" required></select></label></div>
+      <div class="form-grid"><label id="pinAreaField">Developer<select id="pinArea" required></select></label><label>Kategori<select id="pinCategory" required></select></label></div>
+      <div id="pinTransitField" class="hidden transit-field">
+        <label>Tipe simpul<select id="pinTransitType"></select></label>
+        <span class="field-label">Operator</span>
+        <div class="operator-list" id="pinTransitOperators"></div>
+      </div>
       <div class="form-grid"><label>Latitude<input id="pinLat" type="number" step="any" required /></label><label>Longitude<input id="pinLng" type="number" step="any" required /></label></div>
       <label>Logo pin (opsional, maksimum 500 KB)<input id="pinLogo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" /></label>
       <div class="logo-row"><span class="logo-preview" id="logoPreview">Tanpa logo</span><button type="button" class="text-button" id="removeLogo">Hapus logo</button></div>
@@ -144,6 +159,16 @@
       <button type="button" class="text-button add-group" id="addGroup">＋ Tambah kategori</button>
       <p class="form-hint" id="groupsHint"></p>
       <div class="dialog-actions"><span></span><button type="button" class="secondary-button" id="cancelGroups">Batal</button><button type="submit" class="primary-button" id="saveGroups">Simpan</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="pin-dialog" id="loginDialog">
+    <form id="loginForm">
+      <div class="dialog-head"><div><span class="eyebrow">ADMIN</span><h2>Masuk sebagai admin</h2></div><button type="button" class="dialog-close" id="closeLoginDialog" aria-label="Tutup">×</button></div>
+      <p class="form-hint">Hanya admin yang dapat mengubah data. Pengunjung lain melihat peta dalam mode baca saja.</p>
+      <label>Kata sandi<input id="loginPassword" type="password" required autocomplete="current-password" /></label>
+      <p class="form-hint" id="loginHint"></p>
+      <div class="dialog-actions"><span></span><button type="button" class="secondary-button" id="cancelLogin">Batal</button><button type="submit" class="primary-button" id="loginSubmit">Masuk</button></div>
     </form>
   </dialog>
 
