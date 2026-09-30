@@ -251,6 +251,13 @@ function parseCoordinates(raw) {
   }).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
 }
 
+// The badge on a developer card. Derived rather than hardcoded (this replaces a literal
+// `Metland -> MTL`), and capped so a long folder name cannot crowd out the label.
+function shortCode(key) {
+  const clean = String(key).replace(/[^A-Za-z0-9]/g, '');
+  return clean.length <= 4 ? clean.toUpperCase() : clean.slice(0, 3).toUpperCase();
+}
+
 // The boundary placemark inside an area folder carries its human-readable name.
 function boundaryNameOf(folder) {
   const doc = directChildren(folder, 'Document')
@@ -271,7 +278,7 @@ function discoverAreas(rootDocument) {
   const register = folder => {
     const key = textOf(folder, 'name');
     if (!key || found[key]) return;
-    found[key] = { label: boundaryNameOf(folder) || key, code: key };
+    found[key] = { label: boundaryNameOf(folder) || key, code: shortCode(key) };
   };
   const walk = node => directChildren(node, 'Folder').forEach(folder => {
     if (textOf(folder, 'name') === AREA_CONTAINER) directChildren(folder, 'Folder').forEach(register);
@@ -414,9 +421,10 @@ function filterGroups() {
     },
     {
       id: 'price', label: 'Range Harga', builtin: true,
-      // Nothing with a unit catalog means nothing to band; Industrial has no perumahan.
-      optionsOf: () => allFeatures().some(f => Array.isArray(f.catalog) && f.catalog.length)
-        ? PRICE_BANDS.map(b => ({ id: b.id, label: b.label })) : [],
+      // Shown wherever a perumahan is possible, not merely where one already exists —
+      // otherwise the filter disappears from a residential dataset until the first
+      // complex is added, which is exactly backwards.
+      optionsOf: () => canHaveComplexes() ? PRICE_BANDS.map(b => ({ id: b.id, label: b.label })) : [],
       // A complex spans every bracket its catalog covers — "any unit matches".
       valueOf: f => Array.isArray(f.catalog)
         ? PRICE_BANDS.filter(b => f.catalog.some(u => Number.isFinite(u.price) && b.test(u.price))).map(b => b.id)
@@ -759,9 +767,11 @@ function renderFilterGroups() {
 }
 
 // A perumahan must sit inside a township boundary, so a dataset with no boundaries
-// cannot hold one — the control hides rather than offering an action that always fails.
+// cannot hold one. This single predicate drives both the button and Range Harga.
+function canHaveComplexes() { return state.boundaries.length > 0; }
+
 function syncDatasetAffordances() {
-  document.getElementById('addComplexButton').classList.toggle('hidden', !state.boundaries.length);
+  document.getElementById('addComplexButton').classList.toggle('hidden', !canHaveComplexes());
 }
 
 function renderLegend() {
@@ -803,7 +813,16 @@ function toggleMulti(groupId) {
   renderFilterGroups(); renderMap();
 }
 
+// Rendered from MODES rather than written into index.html, so adding a mode is a single
+// edit to that object — the switch, the API and the storage keys all follow from it.
+function renderModeSwitch() {
+  document.getElementById('modeSwitch').innerHTML = Object.entries(MODES).map(([key, mode]) =>
+    `<button type="button" class="mode-option" data-mode="${escapeHtml(key)}">${escapeHtml(mode.label)}</button>`
+  ).join('');
+}
+
 function syncModeControl() {
+  renderModeSwitch();
   document.querySelectorAll('[data-mode]').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.mode === state.mode));
   document.getElementById('modeNote').textContent = MODES[state.mode].label;
@@ -832,23 +851,27 @@ function fitVisible({ animate = false } = {}) {
 
 // Everything parsed from a KMZ or loaded from its mode's storage, cleared so switching
 // mode cannot leave the previous dataset's pins, boundaries or groups behind.
-function resetDataset() {
+function resetDataset({ preserveFilters = false } = {}) {
   state.areas = {};
   state.features = []; state.boundaries = []; state.manualFeatures = []; state.complexes = [];
   state.areaPopulation = {}; state.kmzPopulation = {}; state.customGroups = [];
   state.kmlDoc = null; state.kmlName = 'doc.kml'; state.kmzExtras = {};
-  Object.values(state.filters).forEach(set => set.clear());
-  state.selectedArea = null;
+  // A background refresh must not yank the filters or the selected developer out from
+  // under someone reading the map; a deliberate mode switch still resets them.
+  if (!preserveFilters) {
+    Object.values(state.filters).forEach(set => set.clear());
+    state.selectedArea = null;
+  }
   clearDirty();
 }
 
-async function loadData(mode = state.mode) {
+async function loadData(mode = state.mode, { preserveView = false } = {}) {
   state.mode = mode;
   localStorage.setItem(MODE_KEY, mode);
-  resetDataset();
+  resetDataset({ preserveFilters: preserveView });
   syncModeControl();
   document.getElementById('errorCard').classList.add('hidden');
-  document.getElementById('loading').classList.remove('hidden');
+  if (!preserveView) document.getElementById('loading').classList.remove('hidden');
   try {
     // Server copy wins; the bundled file is the fallback for a plain static deploy.
     const hosted = state.manifest && state.manifest.urls[`kmz:${mode}`];
@@ -888,7 +911,8 @@ async function loadData(mode = state.mode) {
       // No backend, or nothing stored for this mode yet: localStorage remains the source.
       loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
     }
-    renderControls(); renderMap(); fitVisible();
+    renderControls(); renderMap();
+    if (!preserveView) fitVisible();
     document.getElementById('loading').classList.add('hidden');
   } catch (error) {
     console.error(error);
@@ -1265,11 +1289,15 @@ function setStatusNote(text) {
  * and the viewport all survive, so a viewer reading the map does not get yanked around
  * when an admin saves.
  */
+/**
+ * A version bump means "something about this mode changed" — it does not say whether that
+ * was the state blob or the KMZ itself. Re-reading only the state left an uploaded KMZ
+ * invisible to viewers until they reloaded the page, so the whole dataset is re-read,
+ * with the viewport and filters preserved.
+ */
 async function refreshFromServer() {
-  const data = await fetchServerState(state.mode);
-  if (!applyServerState(data)) return;
-  renderControls();
-  renderMap();
+  await loadManifest();                 // an upload may have created URLs that were null
+  await loadData(state.mode, { preserveView: true });
   setStatusNote('Data diperbarui oleh admin.');
 }
 

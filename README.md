@@ -85,7 +85,24 @@ Karena itu dataset Industrial yang datar (tanpa folder kawasan) otomatis tampil 
 daftar developer, tanpa Range Harga, dan tanpa Populasi — tanpa pengaturan tambahan.
 
 > Catatan: harga lahan industri biasanya dihitung per m², bukan miliar per unit seperti
-> perumahan. Grup **Range Harga** saat ini memakai skala residensial untuk kedua mode.
+> perumahan. Grup **Range Harga** saat ini memakai skala residensial.
+
+### Menambah mode baru
+
+Cukup satu perubahan, pada objek `MODES` di `app.js`:
+
+```js
+const MODES = {
+  residential: { label: 'Residential', kmz: 'data/facility-mapping.kmz' },
+  industrial:  { label: 'Industrial',  kmz: 'data/industrial.kmz' },
+  commercial:  { label: 'Commercial',  kmz: 'data/commercial.kmz' }   // <- cukup ini
+};
+```
+
+Tombol mode, kunci `localStorage`, berkas di server, dan nomor versi semuanya mengikuti.
+Sisi server tidak menyimpan daftar mode — ia hanya memastikan namanya aman dipakai sebagai
+nama berkas (huruf kecil, angka, tanda hubung), sehingga tidak ada dua daftar yang harus
+disamakan.
 
 ## Filter
 
@@ -182,8 +199,17 @@ build. Karena itu pemeriksaan admin dilakukan di sisi server melalui folder `api
   mengunggah KMZ ke server.
 
 Perubahan admin tersimpan ke server dan terlihat oleh pengunjung lain **dalam ~1 menit**.
-Batas itu berasal dari cache CDN Vercel Blob yang minimal 60 detik; halaman memeriksa versi
-setiap 30 detik dan hanya saat tab sedang aktif.
+
+Batas itu berasal dari Vercel Blob: menimpa berkas pada path yang sama membutuhkan waktu
+hingga 60 detik untuk menyebar melalui CDN mereka. Menambah parameter unik pada URL hanya
+mengatasi cache *browser*, bukan penyebaran CDN tersebut, sehingga memperpendek interval
+polling saja tidak membuatnya lebih cepat. Halaman memeriksa versi setiap 30 detik, dan
+hanya ketika tab sedang aktif.
+
+Bila suatu saat diperlukan pembaruan yang jauh lebih cepat (~10 detik), caranya adalah
+menulis ke path baru setiap versi — Vercel menganjurkan memperlakukan blob sebagai
+*immutable* — lalu menanyakan versi terkini lewat sebuah Function, bukan lewat blob yang
+ter-cache. Konsekuensinya: satu pemanggilan Function per pengunjung per polling.
 
 ### Menyiapkan server
 

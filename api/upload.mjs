@@ -1,5 +1,5 @@
 import { guardMutation, send, readBody } from './_lib/auth.mjs';
-import { writeBytes, bumpVersion, kmzPath, MODES, DATA_MAX_AGE } from './_lib/store.mjs';
+import { writeBytes, bumpVersion, kmzPath, isValidMode, DATA_MAX_AGE } from './_lib/store.mjs';
 
 export const config = { api: { bodyParser: false } };
 
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   if (!guardMutation(req, res)) return;
 
   const mode = new URL(req.url, 'http://localhost').searchParams.get('mode');
-  if (!MODES.includes(mode)) return send(res, 400, { error: 'unknown mode' });
+  if (!isValidMode(mode)) return send(res, 400, { error: 'invalid mode' });
 
   let body;
   try {

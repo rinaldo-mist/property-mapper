@@ -10,7 +10,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const MODES = ['residential', 'industrial'];
+// Modes are deliberately NOT enumerated here. The client owns the list; the server only
+// needs to know a name is safe as a blob path segment. That keeps adding a mode to one
+// edit instead of two files that must be kept in agreement.
+const MODE_PATTERN = /^[a-z][a-z0-9-]{0,23}$/;
+export function isValidMode(mode) { return MODE_PATTERN.test(String(mode || '')); }
+
 export const VERSION_PATH = 'version.json';
 export const statePath = mode => `state-${mode}.json`;
 export const kmzPath = mode => `kmz-${mode}.kmz`;
@@ -36,30 +41,31 @@ async function blobSdk() {
 
 /** Absolute public URLs the browser reads directly. */
 export async function publicUrls() {
+  // Derived from what is actually stored, so a mode the server has never heard of still
+  // gets its URLs the moment its first blob is written.
   if (backend === 'fs') {
     const base = process.env.PM_LOCAL_BASE || '/__blob';
-    // Only paths that actually exist, matching what list() reports for Blob. Advertising
-    // a URL for a blob that was never written made the client fetch a 404 instead of
-    // falling back to the bundled KMZ — and only locally, which is the worst kind of bug.
-    const present = async pathname =>
-      fs.access(localFile(pathname)).then(() => `${base}/${pathname}`).catch(() => null);
-    const entries = await Promise.all([
-      present(VERSION_PATH).then(url => ['version', url]),
-      ...MODES.flatMap(m => [
-        present(statePath(m)).then(url => [`state:${m}`, url]),
-        present(kmzPath(m)).then(url => [`kmz:${m}`, url])
-      ])
-    ]);
-    return Object.fromEntries(entries);
+    let names = [];
+    try { names = await fs.readdir(LOCAL_DIR); } catch { return {}; }
+    return Object.fromEntries(names
+      .map(name => [urlKeyFor(name), `${base}/${name}`])
+      .filter(([key]) => key));
   }
   const { list } = await blobSdk();
   const { blobs } = await list({ token: process.env.BLOB_READ_WRITE_TOKEN });
-  const byPath = Object.fromEntries(blobs.map(b => [b.pathname, b.url]));
-  const entry = p => byPath[p] || null;
-  return Object.fromEntries([
-    ['version', entry(VERSION_PATH)],
-    ...MODES.flatMap(m => [[`state:${m}`, entry(statePath(m))], [`kmz:${m}`, entry(kmzPath(m))]])
-  ]);
+  return Object.fromEntries(blobs
+    .map(b => [urlKeyFor(b.pathname), b.url])
+    .filter(([key]) => key));
+}
+
+/** `state-residential.json` -> `state:residential`; `kmz-industrial.kmz` -> `kmz:industrial`. */
+function urlKeyFor(pathname) {
+  if (pathname === VERSION_PATH) return 'version';
+  const state = /^state-(.+)\.json$/.exec(pathname);
+  if (state) return `state:${state[1]}`;
+  const kmz = /^kmz-(.+)\.kmz$/.exec(pathname);
+  if (kmz) return `kmz:${kmz[1]}`;
+  return null;
 }
 
 export async function readJson(pathname) {
@@ -124,12 +130,11 @@ export async function writeBytes(pathname, buffer, contentType, { maxAge = DATA_
   return { etag: result.etag, url: result.url };
 }
 
-function emptyVersions() { return Object.fromEntries(MODES.map(m => [m, 0])); }
-
 export async function readVersions() {
   const current = await readJson(VERSION_PATH);
-  if (!current) return { data: emptyVersions(), etag: null };
-  return { data: { ...emptyVersions(), ...current.data }, etag: current.etag };
+  // Absent modes simply have no entry; bumpVersion treats that as 0.
+  if (!current) return { data: {}, etag: null };
+  return { data: current.data || {}, etag: current.etag };
 }
 
 /**
