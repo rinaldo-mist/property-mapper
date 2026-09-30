@@ -21,7 +21,29 @@ data/
 
 ## Memperbarui data
 
-Ganti `data/facility-mapping.kmz` dengan file KMZ baru dan pertahankan nama filenya. Website akan membaca titik, kategori, developer, serta boundary dari KMZ saat halaman dibuka.
+Ganti `data/facility-mapping.kmz` dengan file KMZ baru dan pertahankan nama filenya, atau
+unggah lewat **Unggah KMZ ke server** sebagai admin. Website membaca titik, kategori,
+developer, populasi, dan boundary dari berkas tersebut saat halaman dibuka.
+
+### Struktur yang dibaca
+
+Tidak ada nama developer yang ditulis di dalam kode — semuanya berasal dari berkas:
+
+```text
+Facilities/
+  <Developer>/                 <- nama folder menjadi kunci developer
+    Boundary_<...>/            <- Document berisi polygon; nama placemark-nya
+      <Placemark polygon>         dipakai sebagai label yang tampil
+    <Kategori>/                <- School, Hospital, Showroom Dealer, Gas Station, ...
+      <Placemark titik>
+Population/
+  <Developer>/                 <- kunci yang sama persis
+    <Placemark "± 20.000 s/d 29.000 jiwa">
+```
+
+Bila sebuah berkas tidak memiliki folder `Facilities`, developer dicari dari folder mana
+pun yang memiliki boundary. Bila tidak ada sama sekali — seperti dataset Industrial —
+maka berkas itu tidak punya developer, dan itu sah: titiknya tetap terbaca tanpa kawasan.
 
 ## Menambah pin manual dan logo
 
@@ -46,6 +68,21 @@ serta kategori kustom. Berpindah mode tidak pernah mencampur data keduanya.
 
 Jika berkas untuk sebuah mode belum ada, peta tampil kosong dengan keterangan
 "Dataset ... belum tersedia" — panel filter tetap dapat dipakai.
+
+**Panel menyesuaikan isi berkas.** Tidak ada daftar filter yang ditetapkan per mode;
+setiap grup muncul hanya bila datanya ada:
+
+| Bagian | Muncul bila |
+|---|---|
+| **Developer** | berkas memiliki folder kawasan |
+| **Range Harga** | ada perumahan dengan katalog unit |
+| **Populasi** | ada kawasan yang mencantumkan jumlah jiwa |
+| **Tipe Simpul** / **Operator** | ada titik Transportasi Umum |
+| **Fasilitas** | selalu, dari kategori yang ada di berkas |
+| **Tambah perumahan** | berkas memiliki boundary — perumahan wajib berada di dalamnya |
+
+Karena itu dataset Industrial yang datar (tanpa folder kawasan) otomatis tampil tanpa
+daftar developer, tanpa Range Harga, dan tanpa Populasi — tanpa pengaturan tambahan.
 
 > Catatan: harga lahan industri biasanya dihitung per m², bukan miliar per unit seperti
 > perumahan. Grup **Range Harga** saat ini memakai skala residensial untuk kedua mode.

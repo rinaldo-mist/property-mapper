@@ -1,9 +1,13 @@
-const AREA_NAMES = {
-  Sedayu: 'Sedayu City',
-  JGC: 'Jakarta Garden City',
-  KHI: 'Kota Harapan Indah',
-  Metland: 'Metland Menteng'
-};
+// Areas (developers / townships) are DISCOVERED from the uploaded KMZ, never declared
+// here. A different export, or a dataset with no townships at all, needs no code change.
+// Shape: state.areas = { [key]: { label, code } }
+const AREA_CONTAINER = 'Facilities';   // the wrapper this export format uses
+
+function areaKeys() { return Object.keys(state.areas); }
+function areaName(key) { return (state.areas[key] && state.areas[key].label) || key || ''; }
+function areaCode(key) { return (state.areas[key] && state.areas[key].code) || key || ''; }
+function hasAreas() { return areaKeys().length > 0; }
+function isKnownArea(key) { return !!(key && state.areas[key]); }
 
 // `icon` is the inner markup of a 24x24 SVG (Material Design geometry), not a letter.
 // It is trusted constant markup, so it is injected without escaping — never build one
@@ -29,9 +33,9 @@ function categoryIcon(meta) {
 function isPublicCategory(key) { return !!(CATEGORY_META[key] && CATEGORY_META[key].public); }
 
 // The one place that turns a possibly-absent area into display text. Public facilities
-// have no developer, so every caller must go through this rather than AREA_NAMES[...].
+// have no developer, so every caller must go through this rather than indexing directly.
 function areaLabel(feature) {
-  return feature.area ? AREA_NAMES[feature.area] : 'Fasilitas umum';
+  return feature.area ? areaName(feature.area) : 'Fasilitas umum';
 }
 
 // Bands are non-overlapping. The stated brackets (<=1, 1-2, 2-3, >=3) collide at
@@ -147,6 +151,7 @@ function storeKey(base) { return `${base}:${state.mode}`; }
 
 const state = {
   features: [], boundaries: [], manualFeatures: [], complexes: [],
+  areas: {},                  // discovered from the KMZ: { key: { label, code } }
   areaPopulation: {}, customGroups: [],
   kmzPopulation: {},          // as parsed from the KMZ, so a manual override can be undone
   complexDraft: { latlng: null, catalog: [], custom: {} },
@@ -246,12 +251,47 @@ function parseCoordinates(raw) {
   }).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
 }
 
-function normalizeArea(name) {
-  if (/sedayu/i.test(name)) return 'Sedayu';
-  if (/metland/i.test(name)) return 'Metland';
-  if (/\bKHI\b|harapan indah/i.test(name)) return 'KHI';
-  if (/\bJGC\b|jakarta garden/i.test(name)) return 'JGC';
-  return null;
+// The boundary placemark inside an area folder carries its human-readable name.
+function boundaryNameOf(folder) {
+  const doc = directChildren(folder, 'Document')
+    .find(d => directChildren(d, 'Placemark').some(pm => pm.getElementsByTagNameNS('*', 'Polygon')[0]));
+  if (!doc) return null;
+  const placemark = directChildren(doc, 'Placemark').find(pm => pm.getElementsByTagNameNS('*', 'Polygon')[0]);
+  return placemark ? textOf(placemark, 'name') : null;
+}
+
+/**
+ * First of two passes: the folder names that define areas must be known before the walk
+ * that assigns features to them, because an area is now whatever the file says it is.
+ * Primary rule is this export's format - folders under `Facilities`. A file without that
+ * wrapper falls back to any folder that owns a boundary.
+ */
+function discoverAreas(rootDocument) {
+  const found = {};
+  const register = folder => {
+    const key = textOf(folder, 'name');
+    if (!key || found[key]) return;
+    found[key] = { label: boundaryNameOf(folder) || key, code: key };
+  };
+  const walk = node => directChildren(node, 'Folder').forEach(folder => {
+    if (textOf(folder, 'name') === AREA_CONTAINER) directChildren(folder, 'Folder').forEach(register);
+    else walk(folder);
+  });
+  walk(rootDocument);
+  if (!Object.keys(found).length) {
+    const scan = node => directChildren(node, 'Folder').forEach(folder => {
+      if (boundaryNameOf(folder)) register(folder); else scan(folder);
+    });
+    scan(rootDocument);
+  }
+  return found;
+}
+
+// Exact match against the discovered keys - the Population folder uses the same names,
+// which is why the four hand-written regexes this replaces are no longer needed.
+function areaKeyFor(name) {
+  const trimmed = String(name || '').trim();
+  return state.areas[trimmed] ? trimmed : null;
 }
 
 // The "Population" folder holds one point per area whose *name* carries the figure
@@ -259,7 +299,7 @@ function normalizeArea(name) {
 // branch those points parse as facilities in category Other, inflating 42 pins to 46.
 function parsePopulationFolder(folder) {
   directChildren(folder, 'Folder').forEach(sub => {
-    const area = normalizeArea(textOf(sub, 'name'));
+    const area = areaKeyFor(textOf(sub, 'name'));
     if (!area) return;
     const placemark = directChildren(sub, 'Placemark')[0];
     if (!placemark) return;
@@ -276,7 +316,7 @@ function adoptOwnPlacemark(pm, own, name, context) {
   const publicPin = own.kind === 'manual-pin' && isPublicCategory(own.category);
   // Forced null rather than inherited: a public facility placed inside an area folder
   // must still read as belonging to no developer.
-  const area = publicPin ? null : (own.area && AREA_NAMES[own.area] ? own.area : context.area);
+  const area = publicPin ? null : (isKnownArea(own.area) ? own.area : context.area);
   if (!area && !publicPin) return;
   const base = {
     id: own.id || `${own.kind}-${crypto.randomUUID()}`,
@@ -299,7 +339,7 @@ function traverseFolder(folder, context = { area: null, category: null }) {
   const folderName = textOf(folder, 'name');
   if (/^(population|populasi)$/i.test(folderName)) { parsePopulationFolder(folder); return; }
   const next = { ...context };
-  next.area = normalizeArea(folderName) || next.area;
+  next.area = areaKeyFor(folderName) || next.area;
   next.category = CATEGORY_ALIASES[folderName] || next.category;
 
   directChildren(folder, 'Placemark').forEach((pm, index) => {
@@ -315,8 +355,9 @@ function traverseFolder(folder, context = { area: null, category: null }) {
       const positions = parseCoordinates(coord.textContent);
       if (!positions.length) return;
       const fix = FEATURE_FIXES[name] || {};
-      const guessedArea = fix.area || next.area || normalizeArea(name) || null;
-      if (!guessedArea) return;
+      // Kept even with no area: a dataset may have no townships at all (Industrial), and
+      // dropping those placemarks silently produced an empty map.
+      const guessedArea = fix.area || next.area || areaKeyFor(name) || null;
       state.features.push({
         id: `${guessedArea}-${name}-${index}`,
         name: fix.name || name,
@@ -327,7 +368,7 @@ function traverseFolder(folder, context = { area: null, category: null }) {
     }
     if (polygon) {
       const coord = polygon.getElementsByTagNameNS('*', 'coordinates')[0];
-      const area = next.area || normalizeArea(name);
+      const area = next.area || areaKeyFor(name);
       if (coord && area) state.boundaries.push({ area, name, latlngs: parseCoordinates(coord.textContent) });
     }
   });
@@ -337,7 +378,7 @@ function traverseFolder(folder, context = { area: null, category: null }) {
       const polygon = pm.getElementsByTagNameNS('*', 'Polygon')[0];
       const name = textOf(pm, 'name');
       const coord = polygon?.getElementsByTagNameNS('*', 'coordinates')[0];
-      const area = next.area || normalizeArea(name);
+      const area = next.area || areaKeyFor(name);
       if (coord && area) state.boundaries.push({ area, name, latlngs: parseCoordinates(coord.textContent) });
     });
   });
@@ -373,7 +414,9 @@ function filterGroups() {
     },
     {
       id: 'price', label: 'Range Harga', builtin: true,
-      optionsOf: () => PRICE_BANDS.map(b => ({ id: b.id, label: b.label })),
+      // Nothing with a unit catalog means nothing to band; Industrial has no perumahan.
+      optionsOf: () => allFeatures().some(f => Array.isArray(f.catalog) && f.catalog.length)
+        ? PRICE_BANDS.map(b => ({ id: b.id, label: b.label })) : [],
       // A complex spans every bracket its catalog covers — "any unit matches".
       valueOf: f => Array.isArray(f.catalog)
         ? PRICE_BANDS.filter(b => f.catalog.some(u => Number.isFinite(u.price) && b.test(u.price))).map(b => b.id)
@@ -381,7 +424,9 @@ function filterGroups() {
     },
     {
       id: 'population', label: 'Populasi', builtin: true,
-      optionsOf: () => POPULATION_BANDS.map(b => ({ id: b.id, label: b.label })),
+      // Only when some area actually reported a figure.
+      optionsOf: () => areaKeys().some(key => normalizePopulation(state.areaPopulation[key]))
+        ? POPULATION_BANDS.map(b => ({ id: b.id, label: b.label })) : [],
       appliesTo: f => !isPublicCategory(f.category),
       // Population is an attribute of the township, inherited by everything in it.
       valueOf: f => populationBandsFor(state.areaPopulation[f.area])
@@ -503,11 +548,12 @@ function readStored(key, fallback) {
 function loadManualFeatures() {
   const saved = readStored(storeKey(STORAGE_KEY), null);
   if (saved === null) { saveManualFeatures(); return; }
-  // A public facility legitimately has no area, so the area check is conditional —
-  // an unconditional one silently dropped those pins on every reload.
+  // Structural checks only. Membership of a *discovered* area is deliberately NOT
+  // required: when a KMZ fails to load no areas are known, and checking against them
+  // would discard every stored pin — which the next save would then make permanent.
+  // An unrecognised key simply displays as itself, via areaName()'s fallback.
   state.manualFeatures = Array.isArray(saved) ? saved.filter(f =>
-    f && CATEGORY_META[f.category] && Array.isArray(f.latlng) &&
-    (isPublicCategory(f.category) ? !f.area : !!AREA_NAMES[f.area])) : [];
+    f && CATEGORY_META[f.category] && Array.isArray(f.latlng)) : [];
 }
 
 function saveManualFeatures() { localStorage.setItem(storeKey(STORAGE_KEY), JSON.stringify(state.manualFeatures)); }
@@ -516,7 +562,7 @@ function loadComplexes() {
   const saved = readStored(storeKey(COMPLEX_KEY), null);
   if (saved === null) { saveComplexes(); return; }
   state.complexes = Array.isArray(saved)
-    ? saved.filter(c => c && AREA_NAMES[c.area] && Array.isArray(c.latlng) && Array.isArray(c.catalog))
+    ? saved.filter(c => c && c.area && Array.isArray(c.latlng) && Array.isArray(c.catalog))
       .map(c => ({ ...c, kind: 'complex', category: 'Housing Complex' }))
     : [];
 }
@@ -528,7 +574,7 @@ function saveComplexes() { localStorage.setItem(storeKey(COMPLEX_KEY), JSON.stri
 function loadAreaPopulation() {
   const saved = readStored(storeKey(POPULATION_KEY), {});
   if (!saved || typeof saved !== 'object') return;
-  Object.keys(AREA_NAMES).forEach(key => {
+  areaKeys().forEach(key => {
     const raw = saved[key];
     if (raw === undefined || raw === null) return;
     const parsed = normalizePopulation(typeof raw === 'object' ? raw : Number(raw));
@@ -599,7 +645,7 @@ function renderMap() {
   drawnBoundaries().forEach(b => {
     const polygon = L.polygon(b.latlngs, b.match ? BOUNDARY_STYLE.match : BOUNDARY_STYLE.muted);
     // Only a highlighted boundary names itself; a muted one reads as inert context.
-    if (b.match) polygon.bindTooltip(AREA_NAMES[b.area], { sticky: true });
+    if (b.match) polygon.bindTooltip(areaName(b.area), { sticky: true });
     polygon.addTo(boundaryLayer);
   });
   // No per-marker popupopen binding: one delegated listener on the map container
@@ -656,21 +702,32 @@ function renderResults(features) {
 }
 
 function renderControls() {
+  renderAreaSelects();
   renderDeveloperList();
   renderFilterGroups();
   renderLegend();
+  syncDatasetAffordances();
   syncControls();
 }
 
+function renderAreaSelects() {
+  const options = areaKeys().map(key => `<option value="${escapeHtml(key)}">${escapeHtml(areaName(key))}</option>`).join('');
+  document.getElementById('pinArea').innerHTML = options;
+  document.getElementById('complexArea').innerHTML = options;
+}
+
 function renderDeveloperList() {
-  document.getElementById('developerList').innerHTML = Object.entries(AREA_NAMES).map(([key, label]) => {
+  // No areas in this dataset (e.g. Industrial) means no Developer section at all.
+  document.getElementById('developerSection').classList.toggle('hidden', !hasAreas());
+  document.getElementById('developerList').innerHTML = areaKeys().map(key => {
+    const label = areaName(key);
     const count = allFeatures().filter(f => f.area === key).length;
     const population = formatPopulation(state.areaPopulation[key]);
     const meta = `${count} fasilitas${population ? ` · ${population}` : ''}`;
     // The populasi control is a sibling, not a child: nesting a button inside a button
     // is invalid HTML and the inner one would not receive clicks reliably.
     return `<div class="developer-item">
-      <button class="developer-button" data-area="${escapeHtml(key)}"><span class="dev-code">${key === 'Metland' ? 'MTL' : escapeHtml(key)}</span><span>${escapeHtml(label)}<small>${meta}</small></span></button>
+      <button class="developer-button" data-area="${escapeHtml(key)}"><span class="dev-code">${escapeHtml(areaCode(key))}</span><span>${escapeHtml(label)}<small>${meta}</small></span></button>
       <button class="developer-more admin-only" data-pop-area="${escapeHtml(key)}" title="Set populasi ${escapeHtml(label)}" aria-label="Set populasi ${escapeHtml(label)}">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
       </button>
@@ -699,6 +756,12 @@ function renderFilterGroups() {
       <div class="category-list">${chips}</div>
     </div>`;
   }).join('');
+}
+
+// A perumahan must sit inside a township boundary, so a dataset with no boundaries
+// cannot hold one — the control hides rather than offering an action that always fails.
+function syncDatasetAffordances() {
+  document.getElementById('addComplexButton').classList.toggle('hidden', !state.boundaries.length);
 }
 
 function renderLegend() {
@@ -748,7 +811,7 @@ function syncModeControl() {
 
 function syncControls() {
   document.querySelectorAll('.developer-button').forEach(btn => btn.classList.toggle('active', btn.dataset.area === state.selectedArea));
-  document.getElementById('mapTitle').textContent = state.selectedArea ? AREA_NAMES[state.selectedArea] : 'Semua kawasan';
+  document.getElementById('mapTitle').textContent = state.selectedArea ? areaName(state.selectedArea) : 'Semua kawasan';
 }
 
 // animate: true glides (developer toggle, "Lihat semua"); false snaps (first paint).
@@ -770,6 +833,7 @@ function fitVisible({ animate = false } = {}) {
 // Everything parsed from a KMZ or loaded from its mode's storage, cleared so switching
 // mode cannot leave the previous dataset's pins, boundaries or groups behind.
 function resetDataset() {
+  state.areas = {};
   state.features = []; state.boundaries = []; state.manualFeatures = []; state.complexes = [];
   state.areaPopulation = {}; state.kmzPopulation = {}; state.customGroups = [];
   state.kmlDoc = null; state.kmlName = 'doc.kml'; state.kmzExtras = {};
@@ -804,6 +868,8 @@ async function loadData(mode = state.mode) {
     if (xml.getElementsByTagName('parsererror').length) throw new Error('KML tidak valid');
     state.kmlDoc = xml;
     const rootDocument = xml.getElementsByTagNameNS('*', 'Document')[0];
+    // Pass 1: learn which folders are areas. Pass 2: assign everything to them.
+    state.areas = discoverAreas(rootDocument);
     directChildren(rootDocument, 'Folder').forEach(folder => traverseFolder(folder));
 
     // Read after the walk so an exported value wins over the name-derived Population folder.
@@ -811,7 +877,7 @@ async function loadData(mode = state.mode) {
     if (rootOwn.groups) state.customGroups = parseJsonOr(rootOwn.groups, []);
     if (rootOwn.population) {
       const saved = parseJsonOr(rootOwn.population, {});
-      Object.keys(AREA_NAMES).forEach(area => {
+      areaKeys().forEach(area => {
         const parsed = normalizePopulation(saved[area]);
         if (parsed) { state.areaPopulation[area] = parsed; state.kmzPopulation[area] = parsed; }
       });
@@ -939,7 +1005,7 @@ function areaAt(latlng) {
 function openAreaMenu(area, originalEvent) {
   const menu = document.getElementById('areaMenu');
   menu.innerHTML =
-    `<div class="area-menu-title">${escapeHtml(AREA_NAMES[area])}</div>` +
+    `<div class="area-menu-title">${escapeHtml(areaName(area))}</div>` +
     `<button type="button" role="menuitem" data-menu="complex">＋ Tambah perumahan</button>` +
     `<button type="button" role="menuitem" data-menu="population">Set populasi</button>`;
   menu.dataset.area = area;
@@ -1001,8 +1067,8 @@ function validateComplexForm() {
   else if (!located) message = 'Pilih lokasi perumahan di peta.';
   else if (containing !== chosenArea) {
     message = containing
-      ? `Lokasi berada di dalam ${AREA_NAMES[containing]}, bukan ${AREA_NAMES[chosenArea]}.`
-      : `Lokasi berada di luar boundary ${AREA_NAMES[chosenArea]}.`;
+      ? `Lokasi berada di dalam ${areaName(containing)}, bukan ${areaName(chosenArea)}.`
+      : `Lokasi berada di luar boundary ${areaName(chosenArea)}.`;
   }
   else if (!complete.length) message = 'Isi minimal satu baris katalog dengan LT, LB, dan Harga lebih dari 0.';
   hint.textContent = message;
@@ -1069,7 +1135,7 @@ function closeComplexDialog() { document.getElementById('complexDialog').close()
 function openPopulationDialog(area) {
   closeAreaMenu();
   const current = normalizePopulation(state.areaPopulation[area]);
-  document.getElementById('populationDialogTitle').textContent = `Populasi ${AREA_NAMES[area]}`;
+  document.getElementById('populationDialogTitle').textContent = `Populasi ${areaName(area)}`;
   document.getElementById('populationArea').value = area;
   document.getElementById('populationMin').value = current ? current.min : '';
   document.getElementById('populationMax').value = current && current.max !== current.min ? current.max : '';
@@ -1132,7 +1198,7 @@ function applyServerState(data) {
     state.complexes = data.complexes.map(c => ({ ...c, kind: 'complex', category: 'Housing Complex' }));
   }
   if (data.areaPopulation && typeof data.areaPopulation === 'object') {
-    Object.keys(AREA_NAMES).forEach(area => {
+    areaKeys().forEach(area => {
       const parsed = normalizePopulation(data.areaPopulation[area]);
       if (parsed) state.areaPopulation[area] = parsed;
     });
@@ -1288,8 +1354,8 @@ function appendAreaGrouped(doc, parent, label, items, kind) {
   const section = kmlEl(doc, 'Folder');
   section.appendChild(kmlEl(doc, 'name', label));
   // The trailing null bucket is not optional: a public facility has no area, and
-  // iterating AREA_NAMES alone dropped it from the export with no error at all.
-  [...Object.keys(AREA_NAMES), null].forEach(area => {
+  // iterating the areas alone dropped it from the export with no error at all.
+  [...areaKeys(), null].forEach(area => {
     const inArea = items.filter(item => (item.area || null) === area);
     if (!inArea.length) return;
     const areaFolder = kmlEl(doc, 'Folder');
@@ -1483,7 +1549,8 @@ function applyGroupsDraft() {
   saveCustomGroups(); saveManualFeatures(); saveComplexes();
 }
 
-document.getElementById('pinArea').innerHTML = Object.entries(AREA_NAMES).map(([key, label]) => `<option value="${key}">${label}</option>`).join('');
+// Filled by renderAreaSelects() once the KMZ has been parsed; at module scope the
+// areas are not known yet.
 // 'Housing Complex' is excluded: complexes are created by right-clicking an area, not
 // as a manual pin, and they carry a unit catalog this dialog does not collect.
 document.getElementById('pinCategory').innerHTML = Object.entries(CATEGORY_META)
@@ -1518,8 +1585,7 @@ document.getElementById('map').addEventListener('click', event => {
   if (feature.kind === 'complex') openComplexDialog(feature); else openPinDialog(feature);
 });
 
-document.getElementById('complexArea').innerHTML = Object.entries(AREA_NAMES)
-  .map(([key, label]) => `<option value="${key}">${label}</option>`).join('');
+
 
 document.getElementById('areaMenu').addEventListener('click', event => {
   const btn = event.target.closest('[data-menu]');
