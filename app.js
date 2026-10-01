@@ -134,9 +134,12 @@ const FEATURE_FIXES = {
 // slice of every stored collection. Residential keeps the original filename so the
 // existing data needs no migration.
 const MODES = {
-  residential: { label: 'Residential', kmz: 'data/facility-mapping.kmz' },
-  industrial: { label: 'Industrial', kmz: 'data/industrial.kmz' }
+  residential: { label: 'Residential', kmz: 'data/facility-mapping.kmz', areaTerm: 'Developer' },
+  industrial: { label: 'Industrial', kmz: 'data/industrial.kmz', areaTerm: 'Kawasan' }
 };
+
+// What an area is called in this dataset. Adding a mode still means editing only MODES.
+function areaTerm() { return MODES[state.mode].areaTerm || 'Kawasan'; }
 const DEFAULT_MODE = 'residential';
 
 // Versioned separately so a malformed value in one key cannot take the others down with
@@ -145,13 +148,17 @@ const STORAGE_KEY = 'facility-map-manual-pins-v1';
 const COMPLEX_KEY = 'facility-map-complexes-v1';
 const POPULATION_KEY = 'facility-map-population-v1';
 const GROUPS_KEY = 'facility-map-groups-v1';
+const AREAS_KEY = 'facility-map-areas-v1';
 const MODE_KEY = 'facility-map-mode-v1';
 
 function storeKey(base) { return `${base}:${state.mode}`; }
 
 const state = {
   features: [], boundaries: [], manualFeatures: [], complexes: [],
-  areas: {},                  // discovered from the KMZ: { key: { label, code } }
+  areas: {},                  // merged view: { key: { label, code, source } }
+  customAreas: [],            // authored in the app, or an edit of an imported one:
+                              // { key, label, latlngs }. Keyed, so it adds or overrides.
+  areaDraft: null,            // in-progress drawing / editing
   areaPopulation: {}, customGroups: [],
   kmzPopulation: {},          // as parsed from the KMZ, so a manual override can be undone
   complexDraft: { latlng: null, catalog: [], custom: {} },
@@ -181,6 +188,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 const markerLayer = L.layerGroup().addTo(map);
 const boundaryLayer = L.layerGroup().addTo(map);
 const markerById = new Map();
+const draftLayer = L.layerGroup().addTo(map);
 
 // Everything this app writes into the KML lives under one root folder and one set of
 // `pm:`-prefixed ExtendedData names, so an export can remove its own previous output
@@ -278,7 +286,7 @@ function discoverAreas(rootDocument) {
   const register = folder => {
     const key = textOf(folder, 'name');
     if (!key || found[key]) return;
-    found[key] = { label: boundaryNameOf(folder) || key, code: shortCode(key) };
+    found[key] = { label: boundaryNameOf(folder) || key, code: shortCode(key), source: 'kmz' };
   };
   const walk = node => directChildren(node, 'Folder').forEach(folder => {
     if (textOf(folder, 'name') === AREA_CONTAINER) directChildren(folder, 'Folder').forEach(register);
@@ -292,6 +300,52 @@ function discoverAreas(rootDocument) {
     scan(rootDocument);
   }
   return found;
+}
+
+/**
+ * Folds app-authored areas over whatever the KMZ supplied. An entry whose key already
+ * exists REPLACES that boundary (editing an imported township); a new key ADDS one. Both
+ * then behave exactly like an imported area everywhere else in the app.
+ */
+function applyCustomAreas() {
+  state.customAreas.forEach(area => {
+    if (!area || !area.key || !Array.isArray(area.latlngs) || area.latlngs.length < 3) return;
+    // An edit of an imported area stays distinguishable from one authored here, because
+    // deleting the former cannot stick — the KMZ would simply supply it again on reload.
+    const imported = state.areas[area.key] && state.areas[area.key].source === 'kmz';
+    state.areas[area.key] = {
+      label: area.label || area.key,
+      code: shortCode(area.key),
+      source: imported ? 'kmz-edited' : 'app'
+    };
+    const existing = state.boundaries.findIndex(b => b.area === area.key);
+    const boundary = { area: area.key, name: area.label || area.key, latlngs: area.latlngs };
+    if (existing >= 0) state.boundaries[existing] = boundary;
+    else state.boundaries.push(boundary);
+  });
+}
+
+function loadCustomAreas() {
+  const saved = readStored(storeKey(AREAS_KEY), null);
+  if (saved === null) { saveCustomAreas(); return; }
+  state.customAreas = Array.isArray(saved)
+    ? saved.filter(a => a && a.key && Array.isArray(a.latlngs) && a.latlngs.length >= 3)
+    : [];
+}
+
+function saveCustomAreas() { localStorage.setItem(storeKey(AREAS_KEY), JSON.stringify(state.customAreas)); }
+
+function upsertCustomArea(area) {
+  const index = state.customAreas.findIndex(a => a.key === area.key);
+  if (index >= 0) state.customAreas[index] = area; else state.customAreas.push(area);
+  saveCustomAreas();
+  markDirty();
+}
+
+function removeCustomArea(key) {
+  state.customAreas = state.customAreas.filter(a => a.key !== key);
+  saveCustomAreas();
+  markDirty();
 }
 
 // Exact match against the discovered keys - the Population folder uses the same names,
@@ -725,8 +779,10 @@ function renderAreaSelects() {
 }
 
 function renderDeveloperList() {
-  // No areas in this dataset (e.g. Industrial) means no Developer section at all.
-  document.getElementById('developerSection').classList.toggle('hidden', !hasAreas());
+  // Hidden from viewers when empty, but an admin needs it to create the first one.
+  document.getElementById('developerSection').classList.toggle('hidden', !hasAreas() && state.role !== 'admin');
+  document.getElementById('developerHeading').textContent = areaTerm();
+  document.getElementById('addAreaButton').classList.toggle('hidden', state.role !== 'admin');
   document.getElementById('developerList').innerHTML = areaKeys().map(key => {
     const label = areaName(key);
     const count = allFeatures().filter(f => f.area === key).length;
@@ -852,7 +908,7 @@ function fitVisible({ animate = false } = {}) {
 // Everything parsed from a KMZ or loaded from its mode's storage, cleared so switching
 // mode cannot leave the previous dataset's pins, boundaries or groups behind.
 function resetDataset({ preserveFilters = false } = {}) {
-  state.areas = {};
+  state.areas = {}; state.customAreas = []; state.areaDraft = null;
   state.features = []; state.boundaries = []; state.manualFeatures = []; state.complexes = [];
   state.areaPopulation = {}; state.kmzPopulation = {}; state.customGroups = [];
   state.kmlDoc = null; state.kmlName = 'doc.kml'; state.kmzExtras = {};
@@ -910,7 +966,10 @@ async function loadData(mode = state.mode, { preserveView = false } = {}) {
     if (!applyServerState(served)) {
       // No backend, or nothing stored for this mode yet: localStorage remains the source.
       loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
+      loadCustomAreas();
     }
+    // Folded in after both sources, so an authored area wins over the imported one.
+    applyCustomAreas();
     renderControls(); renderMap();
     if (!preserveView) fitVisible();
     document.getElementById('loading').classList.add('hidden');
@@ -969,13 +1028,21 @@ function openPinDialog(feature = null, latlng = null) {
 // A public facility has no developer, so the field is removed rather than merely
 // ignored. `required` has to come off with it: Chrome refuses to submit a form whose
 // invalid control is not focusable, and shows the user nothing at all.
+// There is no developer to pick either because the facility is public, or because the
+// dataset has no areas at all (Industrial). Both must drop `required`: a required
+// <select> with zero options can never be satisfied, and the browser blocks the submit
+// without saying why.
+function pinNeedsArea(category) {
+  return !isPublicCategory(category) && hasAreas();
+}
+
 function syncPinCategoryFields() {
   const category = document.getElementById('pinCategory').value;
-  const isPublic = isPublicCategory(category);
+  const needsArea = pinNeedsArea(category);
   const select = document.getElementById('pinArea');
-  document.getElementById('pinAreaField').classList.toggle('hidden', isPublic);
-  select.required = !isPublic;
-  select.disabled = isPublic;
+  document.getElementById('pinAreaField').classList.toggle('hidden', !needsArea);
+  select.required = needsArea;
+  select.disabled = !needsArea;
   document.getElementById('pinTransitField').classList.toggle('hidden', category !== TRANSIT_CATEGORY);
 }
 
@@ -996,6 +1063,121 @@ function readTransitFields() {
 }
 
 function closePinDialog() { document.getElementById('pinDialog').close(); }
+
+/* ---------- drawing and editing an area boundary ---------- */
+
+// Drawing a new area and editing an existing one differ only in whether the vertex list
+// starts empty, so both run through this single draft.
+function startAreaDraw() {
+  setAddMode(false);
+  closeAreaMenu();
+  state.areaDraft = { key: null, label: '', latlngs: [] };
+  renderAreaDraft();
+}
+
+function startAreaEdit(key) {
+  setAddMode(false);
+  closeAreaMenu();
+  const boundary = state.boundaries.find(b => b.area === key);
+  if (!boundary) return;
+  // Copied, so cancelling leaves the original untouched.
+  state.areaDraft = { key, label: areaName(key), latlngs: boundary.latlngs.map(p => [p[0], p[1]]) };
+  renderAreaDraft();
+}
+
+function cancelAreaDraft() {
+  state.areaDraft = null;
+  renderAreaDraft();
+}
+
+function vertexIcon(isFirst) {
+  return L.divIcon({ className: '', iconSize: [11, 11], iconAnchor: [6, 6],
+    html: `<div class="area-vertex${isFirst ? ' first' : ''}"></div>` });
+}
+
+function renderAreaDraft() {
+  draftLayer.clearLayers();
+  const draft = state.areaDraft;
+  const banner = document.getElementById('areaDraw');
+  banner.classList.toggle('hidden', !draft);
+  document.getElementById('map').classList.toggle('map-picking', !!draft || state.addMode);
+  if (!draft) return;
+
+  document.getElementById('areaDrawLabel').textContent = draft.key
+    ? `Ubah batas ${areaName(draft.key)}`
+    : `Klik sudut ${areaTerm().toLowerCase()} di peta`;
+  document.getElementById('areaDrawCount').textContent = `${draft.latlngs.length} titik`;
+  document.getElementById('finishAreaDraw').disabled = draft.latlngs.length < 3;
+
+  if (draft.latlngs.length > 1) {
+    const shape = draft.latlngs.length >= 3
+      ? L.polygon(draft.latlngs, { color: '#2b7152', weight: 2, fillColor: '#4a9d6e', fillOpacity: .18 })
+      : L.polyline(draft.latlngs, { color: '#2b7152', weight: 2, dashArray: '5 4' });
+    shape.addTo(draftLayer);
+  }
+
+  draft.latlngs.forEach((point, index) => {
+    const handle = L.marker(point, { draggable: true, icon: vertexIcon(index === 0) }).addTo(draftLayer);
+    handle.on('drag', event => {
+      const ll = event.target.getLatLng();
+      draft.latlngs[index] = [ll.lat, ll.lng];
+      redrawDraftShape();
+    });
+    handle.on('dragend', renderAreaDraft);
+    handle.on('click', event => {
+      // A vertex click removes it; without stopping propagation the map would also
+      // receive the click and immediately append a new one in its place.
+      L.DomEvent.stopPropagation(event);
+      if (draft.latlngs.length <= 3) return;
+      draft.latlngs.splice(index, 1);
+      renderAreaDraft();
+    });
+  });
+}
+
+// Dragging redraws only the outline, so the handles do not get torn down mid-gesture.
+function redrawDraftShape() {
+  const draft = state.areaDraft;
+  if (!draft) return;
+  draftLayer.getLayers().filter(l => l instanceof L.Polyline).forEach(l => draftLayer.removeLayer(l));
+  if (draft.latlngs.length > 1) {
+    const shape = draft.latlngs.length >= 3
+      ? L.polygon(draft.latlngs, { color: '#2b7152', weight: 2, fillColor: '#4a9d6e', fillOpacity: .18 })
+      : L.polyline(draft.latlngs, { color: '#2b7152', weight: 2, dashArray: '5 4' });
+    shape.addTo(draftLayer);
+  }
+}
+
+function appendDraftVertex(latlng) {
+  if (!state.areaDraft) return;
+  state.areaDraft.latlngs.push([latlng.lat, latlng.lng]);
+  renderAreaDraft();
+}
+
+// A key is fixed at creation and never changes, so renaming cannot orphan the pins,
+// population or perumahan that reference it.
+function uniqueAreaKey(label) {
+  const base = String(label).trim().replace(/\s+/g, ' ') || 'Kawasan';
+  if (!state.areas[base]) return base;
+  for (let i = 2; i < 500; i++) if (!state.areas[`${base} ${i}`]) return `${base} ${i}`;
+  return `${base} ${Date.now()}`;
+}
+
+function openAreaDialog() {
+  const draft = state.areaDraft;
+  if (!draft || draft.latlngs.length < 3) return;
+  document.getElementById('areaEyebrow').textContent = areaTerm().toUpperCase();
+  document.getElementById('areaDialogTitle').textContent = draft.key
+    ? `Ubah ${areaTerm().toLowerCase()}` : `${areaTerm()} baru`;
+  document.getElementById('areaName').value = draft.label || '';
+  document.getElementById('areaHint').textContent = `${draft.latlngs.length} sudut.`;
+  // Only an app-authored area can be deleted; an imported one would return on reload.
+  const isApp = draft.key && state.areas[draft.key] && state.areas[draft.key].source === 'app';
+  document.getElementById('deleteArea').classList.toggle('hidden', !isApp);
+  document.getElementById('areaDialog').showModal();
+}
+
+function closeAreaDialog() { document.getElementById('areaDialog').close(); }
 
 /* ---------- area context menu ---------- */
 
@@ -1030,8 +1212,9 @@ function openAreaMenu(area, originalEvent) {
   const menu = document.getElementById('areaMenu');
   menu.innerHTML =
     `<div class="area-menu-title">${escapeHtml(areaName(area))}</div>` +
-    `<button type="button" role="menuitem" data-menu="complex">＋ Tambah perumahan</button>` +
-    `<button type="button" role="menuitem" data-menu="population">Set populasi</button>`;
+    (canHaveComplexes() ? `<button type="button" role="menuitem" data-menu="complex">＋ Tambah perumahan</button>` : '') +
+    `<button type="button" role="menuitem" data-menu="population">Set populasi</button>` +
+    `<button type="button" role="menuitem" data-menu="edit-area">Ubah batas ${escapeHtml(areaTerm().toLowerCase())}</button>`;
   menu.dataset.area = area;
   const rect = document.getElementById('map').getBoundingClientRect();
   // Clamped so the menu never opens past the map's right/bottom edge.
@@ -1211,7 +1394,8 @@ function collectState() {
     manualFeatures: state.manualFeatures,
     complexes: state.complexes,
     areaPopulation: state.areaPopulation,
-    customGroups: state.customGroups
+    customGroups: state.customGroups,
+    customAreas: state.customAreas
   };
 }
 
@@ -1227,6 +1411,7 @@ function applyServerState(data) {
       if (parsed) state.areaPopulation[area] = parsed;
     });
   }
+  if (Array.isArray(data.customAreas)) state.customAreas = data.customAreas;
   if (Array.isArray(data.customGroups)) {
     state.customGroups = data.customGroups;
     state.customGroups.forEach(g => {
@@ -1356,6 +1541,75 @@ function clearDirty() {
   document.getElementById('kmzDirty').classList.add('hidden');
 }
 
+// With no uploaded KMZ there is nothing to mutate, so a minimal document is synthesised.
+// Without this, a mode authored entirely in the app could never be exported.
+function createEmptyKmlDoc() {
+  return new DOMParser().parseFromString(
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Property Mapper</name></Document></kml>',
+    'application/xml');
+}
+
+function findOrCreateFacilities(doc, root) {
+  let found = null;
+  const walk = node => directChildren(node, 'Folder').forEach(folder => {
+    if (found) return;
+    if (textOf(folder, 'name') === AREA_CONTAINER) found = folder;
+    else walk(folder);
+  });
+  walk(root);
+  if (found) return found;
+  const folder = kmlEl(doc, 'Folder');
+  folder.appendChild(kmlEl(doc, 'name', AREA_CONTAINER));
+  root.appendChild(folder);
+  return folder;
+}
+
+/**
+ * Writes authored areas in the SAME shape the importer reads, so an exported file is a
+ * legitimate dataset that can be re-uploaded as the source rather than a private format.
+ *
+ * Only the boundary Document is replaced. The area folder's category folders are left
+ * alone, because for an edited imported township they hold its facility placemarks —
+ * rewriting the whole folder would silently delete them.
+ */
+function writeAuthoredAreas(doc, root) {
+  if (!state.customAreas.length) return;
+  const facilities = findOrCreateFacilities(doc, root);
+  state.customAreas.forEach(area => {
+    if (!Array.isArray(area.latlngs) || area.latlngs.length < 3) return;
+    let folder = directChildren(facilities, 'Folder').find(f => textOf(f, 'name') === area.key);
+    if (!folder) {
+      folder = kmlEl(doc, 'Folder');
+      folder.appendChild(kmlEl(doc, 'name', area.key));
+      setPmData(doc, folder, { authored: '1' });
+      facilities.appendChild(folder);
+    }
+    directChildren(folder, 'Document')
+      .filter(d => /^Boundary/i.test(textOf(d, 'name')))
+      .forEach(d => folder.removeChild(d));
+
+    const boundaryDoc = kmlEl(doc, 'Document');
+    boundaryDoc.appendChild(kmlEl(doc, 'name', `Boundary_${area.key.replace(/\s+/g, '_')}`));
+    const placemark = kmlEl(doc, 'Placemark');
+    placemark.appendChild(kmlEl(doc, 'name', area.label || area.key));
+    const polygon = kmlEl(doc, 'Polygon');
+    const outer = kmlEl(doc, 'outerBoundaryIs');
+    const ring = kmlEl(doc, 'LinearRing');
+    // KML requires a closed ring; the editor stores an open vertex list.
+    const points = area.latlngs.slice();
+    const [firstLat, firstLng] = points[0];
+    const [lastLat, lastLng] = points[points.length - 1];
+    if (firstLat !== lastLat || firstLng !== lastLng) points.push([firstLat, firstLng]);
+    ring.appendChild(kmlEl(doc, 'coordinates', points.map(p => `${p[1]},${p[0]},0`).join(' ')));
+    outer.appendChild(ring);
+    polygon.appendChild(outer);
+    placemark.appendChild(polygon);
+    boundaryDoc.appendChild(placemark);
+    folder.appendChild(boundaryDoc);
+  });
+}
+
 function buildOwnPlacemark(doc, feature, kind) {
   const placemark = kmlEl(doc, 'Placemark');
   placemark.appendChild(kmlEl(doc, 'name', feature.name));
@@ -1397,6 +1651,7 @@ function appendAreaGrouped(doc, parent, label, items, kind) {
 // Mutates the parsed document in place: the original styles, descriptions and folder
 // structure survive, which regenerating the KML from scratch would silently drop.
 function buildExportDocument() {
+  if (!state.kmlDoc) state.kmlDoc = createEmptyKmlDoc();
   const doc = state.kmlDoc;
   const root = doc.getElementsByTagNameNS('*', 'Document')[0];
 
@@ -1409,6 +1664,8 @@ function buildExportDocument() {
     groups: JSON.stringify(state.customGroups),
     population: JSON.stringify(state.areaPopulation)
   });
+
+  writeAuthoredAreas(doc, root);
 
   if (state.complexes.length || state.manualFeatures.length) {
     const folder = kmlEl(doc, 'Folder');
@@ -1456,7 +1713,6 @@ async function writeKmzBlob(blob) {
 async function saveToKmz() {
   const button = document.getElementById('saveKmzButton');
   const note = document.getElementById('storageNote');
-  if (!state.kmlDoc) { note.textContent = 'KMZ belum dimuat.'; return; }
   button.disabled = true;
   try {
     const outcome = await writeKmzBlob(await buildKmzBlob());
@@ -1621,6 +1877,7 @@ document.getElementById('areaMenu').addEventListener('click', event => {
   const area = document.getElementById('areaMenu').dataset.area;
   closeAreaMenu();
   if (btn.dataset.menu === 'complex') openComplexDialog({ area });
+  else if (btn.dataset.menu === 'edit-area') startAreaEdit(area);
   else openPopulationDialog(area);
 });
 
@@ -1779,6 +2036,7 @@ document.getElementById('addComplexButton').addEventListener('click', () => {
 });
 document.getElementById('cancelAddMode').addEventListener('click', () => setAddMode(false));
 map.on('click', e => {
+  if (state.areaDraft) { appendDraftVertex(e.latlng); return; }
   if (!state.addMode) return;
   if (state.pickTarget === 'complex') {
     // A perumahan must sit inside a township, so an outside click is rejected and
@@ -1818,7 +2076,7 @@ document.getElementById('pinForm').addEventListener('submit', event => {
   const feature = {
     id, manual: true,
     name: document.getElementById('pinName').value.trim(),
-    area: isPublicCategory(category) ? null : document.getElementById('pinArea').value,
+    area: pinNeedsArea(category) ? (document.getElementById('pinArea').value || null) : null,
     category,
     latlng: [Number(document.getElementById('pinLat').value), Number(document.getElementById('pinLng').value)],
     logo: state.draftLogo,
@@ -1856,6 +2114,42 @@ document.getElementById('authButton').addEventListener('click', async () => {
   document.getElementById('loginHint').textContent = '';
   document.getElementById('loginPassword').value = '';
   document.getElementById('loginDialog').showModal();
+});
+
+document.getElementById('addAreaButton').addEventListener('click', () => {
+  startAreaDraw();
+  document.getElementById('sidebar').classList.remove('open');
+});
+document.getElementById('cancelAreaDraw').addEventListener('click', cancelAreaDraft);
+document.getElementById('finishAreaDraw').addEventListener('click', openAreaDialog);
+// Closing the dialog returns to drawing rather than discarding: the vertices are the
+// expensive part, and the name is trivially re-entered.
+document.getElementById('closeAreaDialog').addEventListener('click', closeAreaDialog);
+document.getElementById('cancelArea').addEventListener('click', closeAreaDialog);
+
+document.getElementById('areaForm').addEventListener('submit', event => {
+  event.preventDefault();
+  const draft = state.areaDraft;
+  if (!draft || draft.latlngs.length < 3) return;
+  const label = document.getElementById('areaName').value.trim();
+  if (!label) return;
+  upsertCustomArea({ key: draft.key || uniqueAreaKey(label), label, latlngs: draft.latlngs });
+  state.areaDraft = null;
+  renderAreaDraft();
+  closeAreaDialog();
+  applyCustomAreas();
+  renderControls(); renderMap();
+});
+
+document.getElementById('deleteArea').addEventListener('click', () => {
+  const draft = state.areaDraft;
+  if (!draft || !draft.key) return;
+  if (!confirm(`Hapus ${areaTerm().toLowerCase()} ini?`)) return;
+  removeCustomArea(draft.key);
+  delete state.areas[draft.key];
+  state.boundaries = state.boundaries.filter(b => b.area !== draft.key);
+  state.areaDraft = null;
+  renderAreaDraft(); closeAreaDialog(); renderControls(); renderMap();
 });
 
 document.getElementById('closeLoginDialog').addEventListener('click', () => document.getElementById('loginDialog').close());

@@ -44,6 +44,7 @@ button { cursor: pointer; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
 .section-heading h2 { font: 700 12px Manrope; letter-spacing: .08em; text-transform: uppercase; margin: 0; color: #56605a; }
 .section-heading > span { font-size: 12px; color: var(--muted); }
+.heading-actions { display: inline-flex; gap: 10px; align-items: center; }
 .text-button { border: 0; background: none; color: var(--green-2); font-size: 12px; padding: 0; }
 .developer-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .developer-item { position: relative; display: flex; }
@@ -181,6 +182,12 @@ body[data-role="viewer"] .admin-only { display: none !important; }
 .add-mode { position: absolute; z-index: 900; left: 50%; top: 90px; transform: translateX(-50%); padding: 11px 14px; background: #162019; color: white; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.2); display: flex; align-items: center; gap: 14px; }
 .add-mode button { border: 0; border-radius: 8px; padding: 6px 9px; background: white; color: #162019; }
 .add-mode.warn { background: #8a2f2f; }
+/* Four children (label, count, two buttons) crowd the banner, so nothing wraps on
+   desktop; the mobile rule below makes it full width where wrapping is fine. */
+.add-mode strong { white-space: nowrap; }
+.draw-count { font-size: 12px; opacity: .75; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.area-vertex { background: white; border: 2px solid var(--green); border-radius: 50%; width: 11px; height: 11px; box-shadow: 0 1px 4px rgba(12,30,19,.4); cursor: move; }
+.area-vertex.first { background: var(--green); }
 .map-picking { cursor: crosshair; }
 .pin-dialog { width: min(520px, calc(100vw - 28px)); border: 0; border-radius: 18px; padding: 0; box-shadow: 0 22px 70px rgba(16,35,23,.3); }
 .pin-dialog::backdrop { background: rgba(14,25,18,.46); backdrop-filter: blur(3px); }
@@ -226,5 +233,6 @@ body[data-role="viewer"] .admin-only { display: none !important; }
   .dialog-actions { flex-wrap: wrap; }
   .dialog-actions > span { display: none; }
   .danger-button { order: 3; flex: 1 0 100%; }
-  .add-mode { top: 70px; width: calc(100% - 24px); justify-content: space-between; }
+  .add-mode { top: 70px; width: calc(100% - 24px); justify-content: space-between; flex-wrap: wrap; }
+  .add-mode strong { white-space: normal; }
 }

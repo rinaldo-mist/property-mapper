@@ -162,6 +162,49 @@ tidak membuat pin baru.
 Pencarian alamat berjalan setelah jeda ~300 ms dan minimal 3 huruf. Bila jaringan gagal,
 pencarian fasilitas lokal tetap berfungsi seperti biasa.
 
+## Menggambar dan mengubah kawasan
+
+Kawasan tidak harus berasal dari berkas KMZ — admin dapat menggambarnya langsung. Istilah
+yang dipakai mengikuti mode: **Developer** pada Residential, **Kawasan** pada Industrial.
+
+### Menggambar kawasan baru
+
+1. Tekan **＋ Gambar** di sebelah judul daftar kawasan (hanya tampil untuk admin).
+2. Klik tiap sudut pada peta. Minimal tiga sudut sebelum dapat disimpan; jumlah titik
+   terlihat pada panel di atas peta.
+3. Tekan **Selesai**, beri nama, lalu simpan.
+
+Kawasan hasil gambar berlaku **sama persis** seperti kawasan dari KMZ: muncul di daftar,
+pin dapat dimiliki olehnya, klik kanan di dalamnya membuka menu, populasi dapat diisi, dan
+perumahan dapat ditempatkan di dalamnya.
+
+### Mengubah batas kawasan
+
+Klik kanan di dalam sebuah kawasan lalu pilih **Ubah batas**. Ini berlaku untuk kawasan
+hasil gambar **maupun** kawasan dari KMZ.
+
+- Setiap sudut menjadi titik yang dapat **digeser**.
+- Klik pada peta menambah sudut baru di ujung.
+- Klik sebuah sudut untuk menghapusnya (minimal tiga sudut tetap dipertahankan).
+- **Batal** mengembalikan batas seperti semula — perubahan hanya tersimpan setelah
+  **Selesai** lalu **Simpan**.
+
+Kawasan hasil gambar dapat dihapus. Kawasan dari KMZ yang diubah **tidak** dapat dihapus,
+karena berkas KMZ akan menyediakannya lagi saat halaman dimuat ulang; yang tersimpan hanya
+perubahan batasnya.
+
+### Ekspor
+
+Kawasan ditulis ke KMZ dalam struktur `Facilities/<nama>/Boundary_<nama>/` — bentuk yang
+sama seperti berkas aslinya. Artinya berkas hasil ekspor adalah dataset yang sah: dapat
+dibuka di Google Earth, dan dapat diunggah kembali sebagai sumber data.
+
+Saat mengubah kawasan dari KMZ, hanya bagian boundary yang ditulis ulang; folder kategori
+beserta seluruh titik fasilitas di dalamnya tetap utuh.
+
+Mode yang belum memiliki berkas KMZ sama sekali tetap dapat diekspor — dokumen KML dibuat
+dari awal. Jadi dataset Industrial bisa dibangun sepenuhnya di dalam aplikasi.
+
 ## Perumahan dan populasi
 
 ### Menambah perumahan
