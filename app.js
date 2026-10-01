@@ -149,6 +149,7 @@ const COMPLEX_KEY = 'facility-map-complexes-v1';
 const POPULATION_KEY = 'facility-map-population-v1';
 const GROUPS_KEY = 'facility-map-groups-v1';
 const AREAS_KEY = 'facility-map-areas-v1';
+const REMOVED_KEY = 'facility-map-removed-v1';
 const MODE_KEY = 'facility-map-mode-v1';
 
 function storeKey(base) { return `${base}:${state.mode}`; }
@@ -159,6 +160,8 @@ const state = {
   customAreas: [],            // authored in the app, or an edit of an imported one:
                               // { key, label, latlngs }. Keyed, so it adds or overrides.
   areaDraft: null,            // in-progress drawing / editing
+  removedFeatures: [],        // ids of imported facilities an admin deleted
+  hiddenFeatures: [],         // those facilities themselves, so Pulihkan needs no re-parse
   areaPopulation: {}, customGroups: [],
   kmzPopulation: {},          // as parsed from the KMZ, so a manual override can be undone
   complexDraft: { latlng: null, catalog: [], custom: {} },
@@ -189,6 +192,12 @@ const markerLayer = L.layerGroup().addTo(map);
 const boundaryLayer = L.layerGroup().addTo(map);
 const markerById = new Map();
 const draftLayer = L.layerGroup().addTo(map);
+
+// The <Placemark> each imported facility was parsed from. Deleting a facility drops its
+// node on export; restoring one puts the node back, which needs its parent remembered
+// because a detached node no longer knows where it came from.
+const featureNodes = new Map();      // feature id -> node
+const detachedNodes = new Map();     // feature id -> { node, parent }, removed by an export
 
 // Everything this app writes into the KML lives under one root folder and one set of
 // `pm:`-prefixed ExtendedData names, so an export can remove its own previous output
@@ -403,7 +412,7 @@ function traverseFolder(folder, context = { area: null, category: null }) {
   next.area = areaKeyFor(folderName) || next.area;
   next.category = CATEGORY_ALIASES[folderName] || next.category;
 
-  directChildren(folder, 'Placemark').forEach((pm, index) => {
+  directChildren(folder, 'Placemark').forEach(pm => {
     const name = textOf(pm, 'name') || 'Tanpa nama';
     // Placemarks this app wrote are adopted as complexes / manual pins, never as facilities.
     const own = pmValues(pm);
@@ -419,8 +428,10 @@ function traverseFolder(folder, context = { area: null, category: null }) {
       // Kept even with no area: a dataset may have no townships at all (Industrial), and
       // dropping those placemarks silently produced an empty map.
       const guessedArea = fix.area || next.area || areaKeyFor(name) || null;
+      const id = importedFeatureId(guessedArea, name, positions[0]);
+      featureNodes.set(id, pm);
       state.features.push({
-        id: `${guessedArea}-${name}-${index}`,
+        id,
         name: fix.name || name,
         area: guessedArea,
         category: fix.category || next.category || 'Other',
@@ -443,6 +454,20 @@ function traverseFolder(folder, context = { area: null, category: null }) {
       if (coord && area) state.boundaries.push({ area, name, latlngs: parseCoordinates(coord.textContent) });
     });
   });
+}
+
+// Position rather than folder index: an export that drops a deleted placemark shifts
+// every later index, which would make a stored deletion point at a different facility the
+// next time the file is loaded. Five decimals is ~1 m, so two genuinely distinct pins never
+// collide; a true duplicate gets a suffix.
+function importedFeatureId(area, name, latlng) {
+  const base = `${area}-${name}-${latlng[0].toFixed(5)},${latlng[1].toFixed(5)}`;
+  if (!state.features.some(f => f.id === base)) return base;
+  for (let i = 2; i < 500; i++) {
+    const next = `${base}#${i}`;
+    if (!state.features.some(f => f.id === next)) return next;
+  }
+  return `${base}#${crypto.randomUUID()}`;
 }
 
 // Every group — built-in or user-defined — is described by this one shape, so the
@@ -620,6 +645,70 @@ function loadManualFeatures() {
 
 function saveManualFeatures() { localStorage.setItem(storeKey(STORAGE_KEY), JSON.stringify(state.manualFeatures)); }
 
+function loadRemovedFeatures() {
+  const saved = readStored(storeKey(REMOVED_KEY), null);
+  if (saved === null) { saveRemovedFeatures(); return; }
+  state.removedFeatures = Array.isArray(saved) ? saved.filter(id => typeof id === 'string') : [];
+}
+
+function saveRemovedFeatures() { localStorage.setItem(storeKey(REMOVED_KEY), JSON.stringify(state.removedFeatures)); }
+
+// An imported facility is rebuilt from the KMZ on every load, so dropping it from the array
+// is not a deletion — the id has to be remembered and re-applied after each parse. The
+// facility itself is set aside rather than thrown away, so Pulihkan costs no network.
+function applyRemovedFeatures() {
+  if (!state.removedFeatures.length) return;
+  const removed = new Set(state.removedFeatures);
+  state.hiddenFeatures = state.features.filter(f => removed.has(f.id));
+  state.features = state.features.filter(f => !removed.has(f.id));
+}
+
+// One delete for all three kinds of facility, so the popup button means the same thing
+// whatever the pin is. A manual pin and a perumahan simply leave their array; an imported
+// facility has to be remembered, because the KMZ would supply it again on the next load.
+function deleteFeature(id) {
+  if (state.role !== 'admin') return;
+  const feature = allFeatures().find(f => f.id === id);
+  if (!feature) return;
+  const what = feature.kind === 'complex' ? 'perumahan' : 'fasilitas';
+  if (!confirm(`Hapus ${what} "${feature.name}"?`)) return;
+  if (feature.kind === 'complex') {
+    state.complexes = state.complexes.filter(c => c.id !== id);
+    saveComplexes();
+  } else if (feature.manual) {
+    state.manualFeatures = state.manualFeatures.filter(f => f.id !== id);
+    saveManualFeatures();
+  } else {
+    state.features = state.features.filter(f => f.id !== id);
+    state.hiddenFeatures.push(feature);
+    if (!state.removedFeatures.includes(id)) state.removedFeatures.push(id);
+    saveRemovedFeatures();
+  }
+  map.closePopup();
+  markDirty(); renderControls(); renderMap();
+}
+
+// Only imported facilities come back this way. A manual pin or a perumahan is gone for
+// good, exactly as its own delete button already behaved.
+function restoreHiddenFeatures() {
+  if (!state.hiddenFeatures.length) return;
+  state.features = [...state.features, ...state.hiddenFeatures];
+  state.hiddenFeatures = [];
+  state.removedFeatures = [];
+  saveRemovedFeatures();
+  detachedNodes.forEach(({ node, parent }) => parent.appendChild(node));
+  detachedNodes.clear();
+  markDirty(); renderControls(); renderMap();
+}
+
+// Counted from what can actually be restored, not from the stored ids: once an export has
+// dropped the placemarks a re-import has nothing left to bring back.
+function syncHiddenNote() {
+  const count = state.hiddenFeatures.length;
+  document.getElementById('hiddenNote').classList.toggle('hidden', count === 0);
+  document.getElementById('hiddenCount').textContent = `${count} fasilitas KMZ dihapus`;
+}
+
 function loadComplexes() {
   const saved = readStored(storeKey(COMPLEX_KEY), null);
   if (saved === null) { saveComplexes(); return; }
@@ -673,14 +762,19 @@ function makeMarker(feature) {
   });
   const isComplex = feature.kind === 'complex';
   const badge = isComplex ? ' · Perumahan' : (feature.manual ? ' · Pin manual' : '');
+  // Only hand-authored pins can be edited; anything at all can be deleted. Both are gated
+  // by the one `admin-only` CSS rule rather than by role at build time, so logging in does
+  // not leave a stale popup offering — or hiding — the wrong buttons.
+  const edit = isComplex || feature.manual
+    ? `<button class="popup-edit" data-edit-id="${escapeHtml(feature.id)}">${isComplex ? 'Edit perumahan' : 'Edit pin / logo'}</button>`
+    : '';
   return L.marker(feature.latlng, { icon, title: feature.name }).bindPopup(
     `<div class="popup-category" style="color:${meta.color}">${meta.label}</div>` +
     `<h3 class="popup-name">${escapeHtml(feature.name)}</h3>` +
     `<div class="popup-area">${escapeHtml(areaLabel(feature))}${badge}</div>` +
     (isComplex ? catalogSummary(feature) : '') +
-    (isComplex || feature.manual
-      ? `<button class="popup-edit" data-edit-id="${escapeHtml(feature.id)}">${isComplex ? 'Edit perumahan' : 'Edit pin / logo'}</button>`
-      : '')
+    `<div class="popup-actions admin-only">${edit}` +
+    `<button class="popup-delete" data-delete-id="${escapeHtml(feature.id)}">Hapus</button></div>`
   );
 }
 
@@ -768,6 +862,7 @@ function renderControls() {
   renderDeveloperList();
   renderFilterGroups();
   renderLegend();
+  syncHiddenNote();
   syncDatasetAffordances();
   syncControls();
 }
@@ -911,6 +1006,8 @@ function resetDataset({ preserveFilters = false } = {}) {
   state.areas = {}; state.customAreas = []; state.areaDraft = null;
   state.features = []; state.boundaries = []; state.manualFeatures = []; state.complexes = [];
   state.areaPopulation = {}; state.kmzPopulation = {}; state.customGroups = [];
+  state.removedFeatures = []; state.hiddenFeatures = [];
+  featureNodes.clear(); detachedNodes.clear();
   state.kmlDoc = null; state.kmlName = 'doc.kml'; state.kmzExtras = {};
   // A background refresh must not yank the filters or the selected developer out from
   // under someone reading the map; a deliberate mode switch still resets them.
@@ -966,10 +1063,11 @@ async function loadData(mode = state.mode, { preserveView = false } = {}) {
     if (!applyServerState(served)) {
       // No backend, or nothing stored for this mode yet: localStorage remains the source.
       loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
-      loadCustomAreas();
+      loadCustomAreas(); loadRemovedFeatures();
     }
     // Folded in after both sources, so an authored area wins over the imported one.
     applyCustomAreas();
+    applyRemovedFeatures();
     renderControls(); renderMap();
     if (!preserveView) fitVisible();
     document.getElementById('loading').classList.add('hidden');
@@ -1095,6 +1193,11 @@ function vertexIcon(isFirst) {
     html: `<div class="area-vertex${isFirst ? ' first' : ''}"></div>` });
 }
 
+function midpointIcon() {
+  return L.divIcon({ className: '', iconSize: [9, 9], iconAnchor: [5, 5],
+    html: `<div class="area-midpoint"></div>` });
+}
+
 function renderAreaDraft() {
   draftLayer.clearLayers();
   const draft = state.areaDraft;
@@ -1116,7 +1219,14 @@ function renderAreaDraft() {
     shape.addTo(draftLayer);
   }
 
+  // An imported township ring runs to a couple of hundred points, and a handle off screen
+  // cannot be grabbed anyway — so only the ones in view become markers, and a pan or zoom
+  // re-places them. Padded slightly so one just past the edge is still reachable.
+  const view = map.getBounds().pad(.1);
+  const count = draft.latlngs.length;
+
   draft.latlngs.forEach((point, index) => {
+    if (!view.contains(point)) return;
     const handle = L.marker(point, { draggable: true, icon: vertexIcon(index === 0) }).addTo(draftLayer);
     handle.on('drag', event => {
       const ll = event.target.getLatLng();
@@ -1126,13 +1236,32 @@ function renderAreaDraft() {
     handle.on('dragend', renderAreaDraft);
     handle.on('click', event => {
       // A vertex click removes it; without stopping propagation the map would also
-      // receive the click and immediately append a new one in its place.
+      // receive the click and immediately add a new one in its place.
       L.DomEvent.stopPropagation(event);
       if (draft.latlngs.length <= 3) return;
       draft.latlngs.splice(index, 1);
       renderAreaDraft();
     });
   });
+
+  // One hollow handle per edge, at its midpoint. Clicking it splits that edge, which is the
+  // unambiguous way to say where a corner belongs — the nearest-edge guess a map click has
+  // to make is only a guess. The closing edge exists only once there is a ring to close.
+  const edges = count >= 3 ? count : count - 1;
+  for (let i = 0; i < edges; i++) {
+    const a = draft.latlngs[i], b = draft.latlngs[(i + 1) % count];
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (!view.contains(mid)) continue;
+    // An edge a few pixels long has no room for a handle, and a dense imported ring would
+    // otherwise bury the map in them. Zooming in brings each one back as its edge grows.
+    const span = map.latLngToLayerPoint(L.latLng(a)).distanceTo(map.latLngToLayerPoint(L.latLng(b)));
+    if (span < 26) continue;
+    const handle = L.marker(mid, { icon: midpointIcon(), title: 'Tambah sudut di sisi ini' }).addTo(draftLayer);
+    handle.on('click', event => {
+      L.DomEvent.stopPropagation(event);
+      insertDraftVertex(i + 1, { lat: mid[0], lng: mid[1] });
+    });
+  }
 }
 
 // Dragging redraws only the outline, so the handles do not get torn down mid-gesture.
@@ -1148,10 +1277,37 @@ function redrawDraftShape() {
   }
 }
 
-function appendDraftVertex(latlng) {
+/**
+ * A map click used to append, which put the new corner between the last one and the first.
+ * Clicking near the middle of an edge then made the outline cross itself. The corner goes
+ * into the nearest edge instead, measured in screen pixels so it matches what is on screen
+ * rather than what a degree of longitude is worth at this latitude. Tracing a new area in
+ * order still appends, because the edge nearest a click just past the last corner IS the
+ * closing edge.
+ */
+function nearestEdgeIndex(latlng) {
+  const points = state.areaDraft.latlngs;
+  if (points.length < 3) return points.length;        // no ring yet, so just keep extending
+  const p = map.latLngToLayerPoint(latlng);
+  let best = points.length, shortest = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const a = map.latLngToLayerPoint(L.latLng(points[i]));
+    const b = map.latLngToLayerPoint(L.latLng(points[(i + 1) % points.length]));
+    const distance = L.LineUtil.pointToSegmentDistance(p, a, b);
+    if (distance < shortest) { shortest = distance; best = i + 1; }
+  }
+  return best;
+}
+
+function insertDraftVertex(index, latlng) {
   if (!state.areaDraft) return;
-  state.areaDraft.latlngs.push([latlng.lat, latlng.lng]);
+  state.areaDraft.latlngs.splice(index, 0, [latlng.lat, latlng.lng]);
   renderAreaDraft();
+}
+
+function addDraftVertex(latlng) {
+  if (!state.areaDraft) return;
+  insertDraftVertex(nearestEdgeIndex(latlng), latlng);
 }
 
 // A key is fixed at creation and never changes, so renaming cannot orphan the pins,
@@ -1371,11 +1527,18 @@ async function apiJson(path, options = {}) {
 
 function hasBackend() { return !!state.manifest; }
 
+let booted = false;              // set once the first dataset is on screen
+
 function setRole(role) {
+  const changed = state.role !== role;
   state.role = role;
   document.body.dataset.role = role;
   const button = document.getElementById('authButton');
   button.textContent = role === 'admin' ? 'Keluar dari admin' : 'Masuk sebagai admin';
+  // Most admin controls are hidden by one CSS rule, but a few are gated in JS — the draw
+  // button among them. Without this, logging in left them hidden until something else
+  // happened to re-render.
+  if (changed && booted) { renderControls(); renderMap(); }
 }
 
 async function loadManifest() {
@@ -1388,14 +1551,16 @@ async function loadRole() {
   setRole(me && me.admin ? 'admin' : 'viewer');
 }
 
-/** The four collections the server owns. Boundaries and facilities come from the KMZ. */
+/** What the server owns. The KMZ supplies the boundaries and the facilities themselves;
+ *  `removedFeatures` is how a deletion of one of those facilities travels to viewers. */
 function collectState() {
   return {
     manualFeatures: state.manualFeatures,
     complexes: state.complexes,
     areaPopulation: state.areaPopulation,
     customGroups: state.customGroups,
-    customAreas: state.customAreas
+    customAreas: state.customAreas,
+    removedFeatures: state.removedFeatures
   };
 }
 
@@ -1412,6 +1577,9 @@ function applyServerState(data) {
     });
   }
   if (Array.isArray(data.customAreas)) state.customAreas = data.customAreas;
+  if (Array.isArray(data.removedFeatures)) {
+    state.removedFeatures = data.removedFeatures.filter(id => typeof id === 'string');
+  }
   if (Array.isArray(data.customGroups)) {
     state.customGroups = data.customGroups;
     state.customGroups.forEach(g => {
@@ -1519,7 +1687,13 @@ async function uploadKmz(file) {
     body: file
   });
   if (!result) { setStatusNote('Gagal mengunggah KMZ.'); return; }
+  // The deletions were made against the file this one replaces: an exported KMZ already
+  // omits those placemarks, and a freshly authored one never had them. Carrying the ids
+  // over would hide facilities in the new file that merely sit where the old ones did.
   state.serverVersion = result.version;
+  state.removedFeatures = []; state.hiddenFeatures = [];
+  saveRemovedFeatures();
+  await pushState();            // bumps the version again, and sets serverVersion with it
   await loadManifest();
   await loadData(state.mode);
   setStatusNote('KMZ diperbarui. Pengunjung lain melihat perubahan dalam ~1 menit.');
@@ -1666,6 +1840,16 @@ function buildExportDocument() {
   });
 
   writeAuthoredAreas(doc, root);
+
+  // A deleted facility must not return the next time this KMZ is loaded, so its original
+  // placemark leaves the document as well. Parent kept, so Pulihkan can re-attach it
+  // without re-parsing — a detached node has no parentNode of its own any more.
+  state.removedFeatures.forEach(id => {
+    const node = featureNodes.get(id);
+    if (!node || !node.parentNode) return;
+    detachedNodes.set(id, { node, parent: node.parentNode });
+    node.parentNode.removeChild(node);
+  });
 
   if (state.complexes.length || state.manualFeatures.length) {
     const folder = kmlEl(doc, 'Folder');
@@ -1860,8 +2044,10 @@ document.getElementById('filterGroups').addEventListener('click', event => {
   if (multi) return toggleMulti(multi.dataset.multi);
 });
 
-// One delegated listener for every popup Edit button (bug: popupopen used to bind per reopen).
+// One delegated listener for every popup button (bug: popupopen used to bind per reopen).
 document.getElementById('map').addEventListener('click', event => {
+  const remove = event.target.closest('[data-delete-id]');
+  if (remove) return deleteFeature(remove.dataset.deleteId);
   const btn = event.target.closest('[data-edit-id]');
   if (!btn) return;
   const feature = allFeatures().find(f => f.id === btn.dataset.editId);
@@ -1889,6 +2075,8 @@ document.addEventListener('click', event => {
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeAreaMenu(); });
 map.on('movestart zoomstart', closeAreaMenu);
+// Handles are rendered for the current view only, so moving the map has to re-place them.
+map.on('moveend zoomend', () => { if (state.areaDraft) renderAreaDraft(); });
 
 // One map-level handler decides everything, so there is no dependence on whether a layer
 // or the map receives the event first — the previous per-polygon binding opened the menu
@@ -2036,7 +2224,7 @@ document.getElementById('addComplexButton').addEventListener('click', () => {
 });
 document.getElementById('cancelAddMode').addEventListener('click', () => setAddMode(false));
 map.on('click', e => {
-  if (state.areaDraft) { appendDraftVertex(e.latlng); return; }
+  if (state.areaDraft) { addDraftVertex(e.latlng); return; }
   if (!state.addMode) return;
   if (state.pickTarget === 'complex') {
     // A perumahan must sit inside a township, so an outside click is rejected and
@@ -2101,6 +2289,7 @@ document.getElementById('searchInput').addEventListener('input', e => {
   renderMap();                      // local filtering stays instant on every keystroke
   scheduleGeocode(state.query);     // the network part is debounced
 });
+document.getElementById('restoreHidden').addEventListener('click', restoreHiddenFeatures);
 document.getElementById('showAllDevelopers').addEventListener('click', () => { state.selectedArea = null; syncControls(); renderMap(); fitVisible({ animate: true }); });
 document.getElementById('fitMap').addEventListener('click', () => fitVisible({ animate: true }));
 document.getElementById('authButton').addEventListener('click', async () => {
@@ -2202,5 +2391,6 @@ document.getElementById('closeSidebar').addEventListener('click', () => document
   await loadRole();
   const remembered = localStorage.getItem(MODE_KEY);
   await loadData(MODES[remembered] ? remembered : DEFAULT_MODE);
+  booted = true;
   startPolling();
 })();

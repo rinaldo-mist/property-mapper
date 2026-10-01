@@ -53,6 +53,30 @@ maka berkas itu tidak punya developer, dan itu sah: titiknya tetap terbaca tanpa
 4. Unggah logo PNG, JPG, WebP, atau SVG jika diperlukan, lalu simpan.
 5. Klik pin manual dan pilih **Edit pin / logo** untuk mengubah atau menghapusnya.
 
+## Menghapus fasilitas
+
+Klik titik mana pun pada peta, lalu tekan **Hapus** di dalam popup. Tombol ini hanya
+tampil untuk admin, dan berlaku untuk ketiga jenis titik: fasilitas dari KMZ, pin manual,
+dan perumahan.
+
+Fasilitas dari KMZ dibentuk ulang dari berkas setiap kali halaman dimuat, sehingga
+menghapusnya bukan sekadar membuangnya dari daftar — id-nya **diingat** dan diterapkan
+kembali setelah berkas dibaca. Akibatnya:
+
+- Penghapusan tetap berlaku setelah halaman dimuat ulang, dan ikut terkirim ke pengunjung
+  lain seperti perubahan lain yang dilakukan admin.
+- Saat **Simpan ke KMZ**, placemark aslinya ikut dikeluarkan dari berkas. Berkas hasil
+  ekspor benar-benar tidak lagi memuat fasilitas tersebut.
+- Selama belum diekspor, panel kiri menampilkan **"N fasilitas KMZ dihapus · Pulihkan"**.
+  **Pulihkan** mengembalikan semuanya sekaligus.
+
+Pin manual dan perumahan tidak punya mekanisme ini — keduanya memang milik aplikasi,
+sehingga menghapusnya langsung hilang, persis seperti tombol hapus di dalam dialognya.
+
+Mengunggah berkas KMZ baru **mengosongkan** daftar penghapusan: berkas penggantinya sudah
+tidak memuat titik-titik itu (bila berasal dari ekspor), atau memang tidak pernah
+memuatnya.
+
 Pin manual dan logo disimpan melalui `localStorage`, sehingga tetap tersedia saat halaman dibuka kembali pada browser dan domain yang sama. Untuk membagikannya ke perangkat atau pengunjung lain, gunakan **Simpan ke KMZ** (lihat di bawah).
 
 Boundary menggunakan garis merah lembut dan area light red dengan transparansi 50%.
@@ -170,8 +194,8 @@ yang dipakai mengikuti mode: **Developer** pada Residential, **Kawasan** pada In
 ### Menggambar kawasan baru
 
 1. Tekan **＋ Gambar** di sebelah judul daftar kawasan (hanya tampil untuk admin).
-2. Klik tiap sudut pada peta. Minimal tiga sudut sebelum dapat disimpan; jumlah titik
-   terlihat pada panel di atas peta.
+2. Klik tiap sudut pada peta, berurutan mengelilingi kawasan. Minimal tiga sudut sebelum
+   dapat disimpan; jumlah titik terlihat pada panel di atas peta.
 3. Tekan **Selesai**, beri nama, lalu simpan.
 
 Kawasan hasil gambar berlaku **sama persis** seperti kawasan dari KMZ: muncul di daftar,
@@ -184,10 +208,21 @@ Klik kanan di dalam sebuah kawasan lalu pilih **Ubah batas**. Ini berlaku untuk 
 hasil gambar **maupun** kawasan dari KMZ.
 
 - Setiap sudut menjadi titik yang dapat **digeser**.
-- Klik pada peta menambah sudut baru di ujung.
+- Setiap sisi mendapat **titik bayangan** (lingkaran kecil berwarna pudar) di tengahnya.
+  Klik titik itu untuk menyisipkan sudut baru tepat pada sisi tersebut — cara paling pasti
+  untuk menentukan letak sudut.
+- Klik pada peta juga menambah sudut, dan sudut itu disisipkan pada **sisi terdekat**,
+  bukan di ujung daftar. Saat menggambar kawasan baru secara berurutan hasilnya tetap
+  sama seperti menambah di ujung, karena sisi terdekat dari klik setelah sudut terakhir
+  memang sisi penutupnya.
 - Klik sebuah sudut untuk menghapusnya (minimal tiga sudut tetap dipertahankan).
 - **Batal** mengembalikan batas seperti semula — perubahan hanya tersimpan setelah
   **Selesai** lalu **Simpan**.
+
+Titik yang berada di luar layar tidak digambar sebagai pegangan: boundary dari KMZ bisa
+berisi ratusan sudut, dan menampilkan semuanya sekaligus membuat peta berat. Geser atau
+perbesar peta untuk memunculkannya kembali. Titik bayangan juga disembunyikan pada sisi
+yang terlalu pendek di layar — perbesar peta dan titiknya muncul.
 
 Kawasan hasil gambar dapat dihapus. Kawasan dari KMZ yang diubah **tidak** dapat dihapus,
 karena berkas KMZ akan menyediakannya lagi saat halaman dimuat ulang; yang tersimpan hanya

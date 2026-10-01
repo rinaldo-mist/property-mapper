@@ -99,6 +99,8 @@ footer { border-top: 1px solid var(--line); padding: 12px 20px; color: var(--mut
 .admin-button:disabled { opacity: .55; cursor: progress; }
 .upload-button { display: block; text-align: center; cursor: pointer; }
 .upload-button input { display: none; }
+.hidden-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; padding: 7px 10px; border-radius: 10px; background: #fbeced; color: #8d3a3a; font-size: 12px; font-weight: 600; }
+.hidden-note .text-button { color: #8d3a3a; text-decoration: underline; font-weight: 700; }
 /* Hidden rather than disabled: a viewer should not see controls they cannot use. */
 body[data-role="viewer"] .admin-only { display: none !important; }
 .sync-note { color: var(--green-2); }
@@ -133,6 +135,8 @@ body[data-role="viewer"] .admin-only { display: none !important; }
 .popup-area { font-size: 12px; color: var(--muted); margin-top: 7px; }
 .popup-edit { margin-top: 11px; border: 0; border-radius: 8px; padding: 7px 9px; color: var(--green); background: #edf5f0; font-weight: 700; }
 .popup-catalog { margin-top: 7px; font-size: 12px; color: var(--green-2); font-weight: 600; }
+.popup-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.popup-delete { margin-top: 11px; border: 0; border-radius: 8px; padding: 7px 9px; color: #8d3a3a; background: #fbeced; font-weight: 700; }
 
 /* Right-click menu on an area boundary. Positioned inside .map-area, which is relative. */
 .area-menu { position: absolute; z-index: 1200; min-width: 182px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 14px 38px rgba(20,40,28,.22); padding: 6px; display: grid; gap: 2px; }
@@ -188,6 +192,10 @@ body[data-role="viewer"] .admin-only { display: none !important; }
 .draw-count { font-size: 12px; opacity: .75; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .area-vertex { background: white; border: 2px solid var(--green); border-radius: 50%; width: 11px; height: 11px; box-shadow: 0 1px 4px rgba(12,30,19,.4); cursor: move; }
 .area-vertex.first { background: var(--green); }
+/* A dimmer, smaller sibling of the vertex handle, so it reads as "half a corner". Dashed
+   at this size came out as three stray dots, which was not legible on a busy map. */
+.area-midpoint { background: white; border: 2px solid var(--green-2); border-radius: 50%; width: 9px; height: 9px; opacity: .6; box-shadow: 0 1px 3px rgba(12,30,19,.35); cursor: copy; }
+.area-midpoint:hover { opacity: 1; transform: scale(1.3); }
 .map-picking { cursor: crosshair; }
 .pin-dialog { width: min(520px, calc(100vw - 28px)); border: 0; border-radius: 18px; padding: 0; box-shadow: 0 22px 70px rgba(16,35,23,.3); }
 .pin-dialog::backdrop { background: rgba(14,25,18,.46); backdrop-filter: blur(3px); }
