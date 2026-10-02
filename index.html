@@ -69,6 +69,7 @@
         <button class="admin-button admin-only" id="addPinButton">＋ Tambah pin manual</button>
         <button class="admin-button admin-only" id="addComplexButton">＋ Tambah perumahan</button>
         <button class="admin-button ghost admin-only" id="manageGroupsButton">Kelola kategori</button>
+        <button class="admin-button ghost admin-only" id="managePriceButton">Atur range harga</button>
         <button class="admin-button ghost admin-only" id="saveKmzButton">Simpan ke KMZ<span class="dirty-dot hidden" id="kmzDirty" title="Ada perubahan yang belum disimpan"></span></button>
         <label class="admin-button ghost admin-only upload-button" id="uploadKmzLabel">Unggah KMZ ke server<input type="file" id="uploadKmz" accept=".kmz,.kml,application/vnd.google-earth.kmz" /></label>
         <button class="admin-button ghost" id="authButton">Masuk sebagai admin</button>
@@ -138,7 +139,7 @@
       <div class="section-heading catalog-head"><h2>Katalog unit</h2><button type="button" class="text-button" id="addCatalogRow">＋ Tambah unit</button></div>
       <div class="catalog-wrap">
         <table class="catalog-table">
-          <thead><tr><th>LT (m²)</th><th>LB (m²)</th><th>Harga (miliar)</th><th aria-label="Aksi"></th></tr></thead>
+          <thead><tr><th>LT (m²)</th><th>LB (m²)</th><th id="catalogPriceHead">Harga (miliar)</th><th aria-label="Aksi"></th></tr></thead>
           <tbody id="catalogBody"></tbody>
         </table>
       </div>
@@ -169,6 +170,19 @@
       <button type="button" class="text-button add-group" id="addGroup">＋ Tambah kategori</button>
       <p class="form-hint" id="groupsHint"></p>
       <div class="dialog-actions"><span></span><button type="button" class="secondary-button" id="cancelGroups">Batal</button><button type="submit" class="primary-button" id="saveGroups">Simpan</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="pin-dialog" id="priceDialog">
+    <form id="priceForm">
+      <div class="dialog-head"><div><span class="eyebrow">RANGE HARGA</span><h2>Atur range harga</h2></div><button type="button" class="dialog-close" id="closePriceDialog" aria-label="Tutup">&times;</button></div>
+      <p class="form-hint">Batas harga menentukan pilihan filter <strong>Range Harga</strong>, dan hanya berlaku untuk mode <strong id="priceModeNote">Residential</strong>.</p>
+      <label class="price-unit">Satuan<input id="priceUnit" maxlength="10" placeholder="M" /></label>
+      <div id="priceEditor"></div>
+      <button type="button" class="text-button add-group" id="addPriceBand">＋ Tambah batas</button>
+      <div class="price-preview" id="pricePreview"></div>
+      <p class="form-hint" id="priceHint"></p>
+      <div class="dialog-actions"><button type="button" class="secondary-button" id="resetPrice">Kembalikan bawaan</button><span></span><button type="button" class="secondary-button" id="cancelPrice">Batal</button><button type="submit" class="primary-button" id="savePrice">Simpan</button></div>
     </form>
   </dialog>
 

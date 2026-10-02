@@ -38,18 +38,66 @@ function areaLabel(feature) {
   return feature.area ? areaName(feature.area) : 'Fasilitas umum';
 }
 
-// Bands are non-overlapping. The stated brackets (<=1, 1-2, 2-3, >=3) collide at
-// exactly 1, 2 and 3; each boundary is assigned to the lower bracket.
-const PRICE_BANDS = [
-  { id: 'lte1', label: '≤ 1 M', test: p => p <= 1 },
-  { id: '1to2', label: '1 – 2 M', test: p => p > 1 && p <= 2 },
-  { id: '2to3', label: '2 – 3 M', test: p => p > 2 && p <= 3 },
-  { id: 'gte3', label: '> 3 M', test: p => p > 3 }
-];
+/**
+ * Price brackets are authored by the admin, per mode, because the two datasets are not
+ * quoted in the same thing at all: a house sells as a whole unit in miliar, industrial
+ * land sells per m². What is stored is a ladder of thresholds plus a unit, not a list of
+ * ranges — brackets derived from a ladder cannot overlap or leave a gap, which free-form
+ * min/max fields would allow on the first typo. MODES carries each mode's starting point.
+ */
+const MAX_PRICE_THRESHOLDS = 8;
+
+function defaultPriceScale(mode = state.mode) {
+  const base = (MODES[mode] && MODES[mode].price) || { unit: 'M', thresholds: [1, 2, 3] };
+  return { unit: base.unit, thresholds: [...base.thresholds] };
+}
+
+function priceScale() { return state.priceScale || defaultPriceScale(); }
+
+// Returns null for anything unusable, so a corrupt stored value or a hostile server
+// payload falls back to the mode's default instead of emptying the filter.
+function normalizePriceScale(value) {
+  if (!value || typeof value !== 'object') return null;
+  const unit = String(value.unit || '').trim().slice(0, 10);
+  const thresholds = Array.isArray(value.thresholds)
+    ? value.thresholds.map(Number).filter(v => Number.isFinite(v) && v > 0)
+    : [];
+  if (!unit || !thresholds.length || thresholds.length > MAX_PRICE_THRESHOLDS) return null;
+  if (thresholds.some((v, i) => i > 0 && v <= thresholds[i - 1])) return null;
+  return { unit, thresholds };
+}
+
+function formatPriceNumber(value) {
+  return value.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+}
+
+/**
+ * Derived on demand, never stored. Ids are positional, so changing the ladder changes what
+ * every id means — which is exactly why saving a new one clears the Range Harga selection.
+ * Bounds are (min, max]: a price sitting on a threshold belongs to the lower bracket.
+ */
+function priceBands(scale = priceScale()) {
+  const { unit, thresholds } = scale;
+  const bands = thresholds.map((cut, i) => ({
+    id: `b${i}`,
+    label: i === 0
+      ? `≤ ${formatPriceNumber(cut)} ${unit}`
+      : `${formatPriceNumber(thresholds[i - 1])} – ${formatPriceNumber(cut)} ${unit}`,
+    min: i === 0 ? null : thresholds[i - 1],
+    max: cut
+  }));
+  const last = thresholds[thresholds.length - 1];
+  bands.push({ id: `b${thresholds.length}`, label: `> ${formatPriceNumber(last)} ${unit}`, min: last, max: null });
+  return bands;
+}
+
+function priceBandHas(band, value) {
+  return (band.min === null || value > band.min) && (band.max === null || value <= band.max);
+}
 
 // Scaled to the real KMZ figures (Sedayu ~9-10rb, Metland ~10rb, JGC ~20-29rb,
 // KHI ~60-125rb). Bounds are (min, max] so a single value on a boundary falls in the
-// lower band, matching PRICE_BANDS. Population arrives as a RANGE, so a band matches
+// lower band, as the price brackets do. Population arrives as a RANGE, so a band matches
 // when the range overlaps it — see populationBandsFor for how endpoints are handled.
 const POPULATION_BANDS = [
   { id: 'lte10k', label: '≤ 10rb', min: -Infinity, max: 10000 },
@@ -134,8 +182,16 @@ const FEATURE_FIXES = {
 // slice of every stored collection. Residential keeps the original filename so the
 // existing data needs no migration.
 const MODES = {
-  residential: { label: 'Residential', kmz: 'data/facility-mapping.kmz', areaTerm: 'Developer' },
-  industrial: { label: 'Industrial', kmz: 'data/industrial.kmz', areaTerm: 'Kawasan' }
+  residential: {
+    label: 'Residential', kmz: 'data/facility-mapping.kmz', areaTerm: 'Developer',
+    complexes: true,                                        // perumahan hanya di sini
+    price: { unit: 'M', thresholds: [1, 2, 3] }              // harga satu unit, dalam miliar
+  },
+  industrial: {
+    label: 'Industrial', kmz: 'data/industrial.kmz', areaTerm: 'Kawasan',
+    complexes: false,
+    price: { unit: 'jt/m²', thresholds: [2, 3, 5] }          // harga lahan per m², dalam juta
+  }
 };
 
 // What an area is called in this dataset. Adding a mode still means editing only MODES.
@@ -150,6 +206,7 @@ const POPULATION_KEY = 'facility-map-population-v1';
 const GROUPS_KEY = 'facility-map-groups-v1';
 const AREAS_KEY = 'facility-map-areas-v1';
 const REMOVED_KEY = 'facility-map-removed-v1';
+const PRICE_KEY = 'facility-map-price-v1';
 const MODE_KEY = 'facility-map-mode-v1';
 
 function storeKey(base) { return `${base}:${state.mode}`; }
@@ -160,6 +217,8 @@ const state = {
   customAreas: [],            // authored in the app, or an edit of an imported one:
                               // { key, label, latlngs }. Keyed, so it adds or overrides.
   areaDraft: null,            // in-progress drawing / editing
+  priceScale: null,           // { unit, thresholds } for this mode; null = mode default
+  priceDraft: null,           // working copy edited by the price dialog
   removedFeatures: [],        // ids of imported facilities an admin deleted
   hiddenFeatures: [],         // those facilities themselves, so Pulihkan needs no re-parse
   areaPopulation: {}, customGroups: [],
@@ -503,10 +562,10 @@ function filterGroups() {
       // Shown wherever a perumahan is possible, not merely where one already exists —
       // otherwise the filter disappears from a residential dataset until the first
       // complex is added, which is exactly backwards.
-      optionsOf: () => canHaveComplexes() ? PRICE_BANDS.map(b => ({ id: b.id, label: b.label })) : [],
+      optionsOf: () => canHaveComplexes() ? priceBands().map(b => ({ id: b.id, label: b.label })) : [],
       // A complex spans every bracket its catalog covers — "any unit matches".
       valueOf: f => Array.isArray(f.catalog)
-        ? PRICE_BANDS.filter(b => f.catalog.some(u => Number.isFinite(u.price) && b.test(u.price))).map(b => b.id)
+        ? priceBands().filter(b => f.catalog.some(u => Number.isFinite(u.price) && priceBandHas(b, u.price))).map(b => b.id)
         : []
     },
     {
@@ -645,6 +704,15 @@ function loadManualFeatures() {
 
 function saveManualFeatures() { localStorage.setItem(storeKey(STORAGE_KEY), JSON.stringify(state.manualFeatures)); }
 
+function loadPriceScale() {
+  const saved = readStored(storeKey(PRICE_KEY), null);
+  if (saved === null) { savePriceScale(); return; }
+  const parsed = normalizePriceScale(saved);
+  if (parsed) state.priceScale = parsed;
+}
+
+function savePriceScale() { localStorage.setItem(storeKey(PRICE_KEY), JSON.stringify(priceScale())); }
+
 function loadRemovedFeatures() {
   const saved = readStored(storeKey(REMOVED_KEY), null);
   if (saved === null) { saveRemovedFeatures(); return; }
@@ -691,7 +759,9 @@ function deleteFeature(id) {
 // Only imported facilities come back this way. A manual pin or a perumahan is gone for
 // good, exactly as its own delete button already behaved.
 function restoreHiddenFeatures() {
-  if (!state.hiddenFeatures.length) return;
+  // Guarded like deleteFeature is: the restore button is hidden from viewers by CSS alone,
+  // and un-deleting locally would leave that viewer's map disagreeing with everyone else's.
+  if (state.role !== 'admin' || !state.hiddenFeatures.length) return;
   state.features = [...state.features, ...state.hiddenFeatures];
   state.hiddenFeatures = [];
   state.removedFeatures = [];
@@ -779,7 +849,7 @@ function makeMarker(feature) {
 }
 
 function formatPrice(value) {
-  return `${value.toLocaleString('id-ID', { maximumFractionDigits: 2 })} M`;
+  return `${formatPriceNumber(value)} ${priceScale().unit}`;
 }
 
 function catalogSummary(complex) {
@@ -858,6 +928,10 @@ function renderResults(features) {
 }
 
 function renderControls() {
+  // The catalog is typed in whatever the brackets are quoted in, so the column header is
+  // not a fixed string either.
+  document.getElementById('catalogPriceHead').textContent = `Harga (${priceScale().unit})`;
+  document.getElementById('managePriceButton').textContent = `Atur range harga (${priceScale().unit})`;
   renderAreaSelects();
   renderDeveloperList();
   renderFilterGroups();
@@ -917,9 +991,12 @@ function renderFilterGroups() {
   }).join('');
 }
 
-// A perumahan must sit inside a township boundary, so a dataset with no boundaries
-// cannot hold one. This single predicate drives both the button and Range Harga.
-function canHaveComplexes() { return state.boundaries.length > 0; }
+// A perumahan belongs to Residential only — an industrial estate does not contain housing
+// — and it must sit inside a boundary, so a dataset with none cannot hold one either. This
+// single predicate drives the add button, the right-click item and Range Harga alike.
+function canHaveComplexes() {
+  return !!MODES[state.mode].complexes && state.boundaries.length > 0;
+}
 
 function syncDatasetAffordances() {
   document.getElementById('addComplexButton').classList.toggle('hidden', !canHaveComplexes());
@@ -1007,6 +1084,7 @@ function resetDataset({ preserveFilters = false } = {}) {
   state.features = []; state.boundaries = []; state.manualFeatures = []; state.complexes = [];
   state.areaPopulation = {}; state.kmzPopulation = {}; state.customGroups = [];
   state.removedFeatures = []; state.hiddenFeatures = [];
+  state.priceScale = defaultPriceScale();
   featureNodes.clear(); detachedNodes.clear();
   state.kmlDoc = null; state.kmlName = 'doc.kml'; state.kmzExtras = {};
   // A background refresh must not yank the filters or the selected developer out from
@@ -1016,6 +1094,22 @@ function resetDataset({ preserveFilters = false } = {}) {
     state.selectedArea = null;
   }
   clearDirty();
+}
+
+/**
+ * Everything the app owns, as opposed to what the KMZ supplies: the server copy wins, and
+ * localStorage is the fallback for a static deploy or a mode the server has never seen.
+ * Shared by the normal path and the missing-KMZ path so the two cannot drift.
+ */
+async function restoreAuthoredState(mode) {
+  const served = await fetchServerState(mode);
+  if (!applyServerState(served)) {
+    loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
+    loadCustomAreas(); loadRemovedFeatures(); loadPriceScale();
+  }
+  // Folded in after both sources, so an authored area wins over the imported one.
+  applyCustomAreas();
+  applyRemovedFeatures();
 }
 
 async function loadData(mode = state.mode, { preserveView = false } = {}) {
@@ -1051,6 +1145,10 @@ async function loadData(mode = state.mode, { preserveView = false } = {}) {
     // Read after the walk so an exported value wins over the name-derived Population folder.
     const rootOwn = pmValues(rootDocument);
     if (rootOwn.groups) state.customGroups = parseJsonOr(rootOwn.groups, []);
+    if (rootOwn.price) {
+      const parsed = normalizePriceScale(parseJsonOr(rootOwn.price, null));
+      if (parsed) state.priceScale = parsed;
+    }
     if (rootOwn.population) {
       const saved = parseJsonOr(rootOwn.population, {});
       areaKeys().forEach(area => {
@@ -1059,15 +1157,7 @@ async function loadData(mode = state.mode, { preserveView = false } = {}) {
       });
     }
 
-    const served = await fetchServerState(mode);
-    if (!applyServerState(served)) {
-      // No backend, or nothing stored for this mode yet: localStorage remains the source.
-      loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
-      loadCustomAreas(); loadRemovedFeatures();
-    }
-    // Folded in after both sources, so an authored area wins over the imported one.
-    applyCustomAreas();
-    applyRemovedFeatures();
+    await restoreAuthoredState(mode);
     renderControls(); renderMap();
     if (!preserveView) fitVisible();
     document.getElementById('loading').classList.add('hidden');
@@ -1075,8 +1165,11 @@ async function loadData(mode = state.mode, { preserveView = false } = {}) {
     console.error(error);
     document.getElementById('loading').classList.add('hidden');
     // An absent dataset for a mode is an empty map with its controls still usable, not a
-    // dead end — the admin has simply not uploaded that KMZ yet.
-    loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
+    // dead end — the admin has simply not uploaded that KMZ yet. Everything authored in
+    // the app is restored exactly as it is when the KMZ does load: this path used to skip
+    // areas, deletions and brackets, so a mode built entirely in the app lost its areas on
+    // the next reload — the one case the whole in-app authoring path exists for.
+    await restoreAuthoredState(state.mode);
     renderControls(); renderMap();
     const missing = /tidak ditemukan/.test(error.message);
     document.getElementById('errorTitle').textContent = missing
@@ -1109,7 +1202,7 @@ function openPinDialog(feature = null, latlng = null) {
   document.getElementById('dialogTitle').textContent = feature ? 'Edit fasilitas' : 'Tambah fasilitas';
   document.getElementById('pinId').value = feature?.id || '';
   document.getElementById('pinName').value = feature?.name || '';
-  document.getElementById('pinArea').value = feature?.area || state.selectedArea || 'JGC';
+  document.getElementById('pinArea').value = feature?.area || state.selectedArea || areaKeys()[0] || '';
   document.getElementById('pinCategory').value = feature?.category || 'Showroom Dealer';
   document.getElementById('pinLat').value = feature?.latlng?.[0] ?? latlng?.lat ?? '';
   document.getElementById('pinLng').value = feature?.latlng?.[1] ?? latlng?.lng ?? '';
@@ -1381,7 +1474,14 @@ function openAreaMenu(area, originalEvent) {
   menu.classList.remove('hidden');
 }
 
-function closeAreaMenu() { document.getElementById('areaMenu').classList.add('hidden'); }
+function closeAreaMenu() {
+  const menu = document.getElementById('areaMenu');
+  menu.classList.add('hidden');
+  // Cleared with it: a right-click that resolves to no area closes the menu without
+  // rewriting dataset.area, and a stale value there points every later read at whichever
+  // area happened to be open last.
+  delete menu.dataset.area;
+}
 
 /* ---------- housing complex dialog ---------- */
 
@@ -1463,7 +1563,7 @@ function openComplexDialog(draft) {
   state.complexDraft = {
     id: draft.id || null,
     name: draft.name || '',
-    area: draft.area || state.selectedArea || 'JGC',
+    area: draft.area || state.selectedArea || areaKeys()[0] || '',
     latlng: draft.latlng || null,
     catalog: (draft.catalog && draft.catalog.length ? draft.catalog : [blankCatalogRow()]),
     custom: draft.custom || {},
@@ -1560,7 +1660,8 @@ function collectState() {
     areaPopulation: state.areaPopulation,
     customGroups: state.customGroups,
     customAreas: state.customAreas,
-    removedFeatures: state.removedFeatures
+    removedFeatures: state.removedFeatures,
+    priceScale: priceScale()
   };
 }
 
@@ -1577,6 +1678,8 @@ function applyServerState(data) {
     });
   }
   if (Array.isArray(data.customAreas)) state.customAreas = data.customAreas;
+  const price = normalizePriceScale(data.priceScale);
+  if (price) state.priceScale = price;
   if (Array.isArray(data.removedFeatures)) {
     state.removedFeatures = data.removedFeatures.filter(id => typeof id === 'string');
   }
@@ -1836,7 +1939,8 @@ function buildExportDocument() {
 
   setPmData(doc, root, {
     groups: JSON.stringify(state.customGroups),
-    population: JSON.stringify(state.areaPopulation)
+    population: JSON.stringify(state.areaPopulation),
+    price: JSON.stringify(priceScale())
   });
 
   writeAuthoredAreas(doc, root);
@@ -1919,6 +2023,65 @@ async function saveToKmz() {
 // Only hand-authored features carry tags; imported facilities are rebuilt from the KMZ
 // on every load, so a tag written onto one would silently vanish.
 function taggableFeatures() { return [...state.manualFeatures, ...state.complexes]; }
+
+/* ---------- price brackets ---------- */
+
+function openPriceDialog() {
+  // Authoring the brackets is an admin act: everyone reads the same ones, so a viewer
+  // changing them would only disagree with what the rest of the map is filtered by.
+  if (state.role !== 'admin') return;
+  const scale = priceScale();
+  state.priceDraft = { unit: scale.unit, thresholds: [...scale.thresholds] };
+  document.getElementById('priceModeNote').textContent = MODES[state.mode].label;
+  document.getElementById('priceUnit').value = state.priceDraft.unit;
+  renderPriceEditor();
+  document.getElementById('priceDialog').showModal();
+}
+
+function closePriceDialog() { document.getElementById('priceDialog').close(); }
+
+function renderPriceEditor() {
+  document.getElementById('priceEditor').innerHTML = state.priceDraft.thresholds.map((value, i) => `
+    <div class="price-row">
+      <label>Batas ${i + 1}<input type="number" step="0.01" min="0" data-price-threshold="${i}" value="${escapeHtml(value)}" /></label>
+      <button type="button" class="row-remove" data-price-remove="${i}" aria-label="Hapus batas ${i + 1}">×</button>
+    </div>`).join('');
+  renderPricePreview();
+  validatePriceForm();
+}
+
+// Reads the live inputs back into the draft so a re-render never loses typing.
+function syncPriceDraftFromForm() {
+  state.priceDraft.unit = document.getElementById('priceUnit').value;
+  document.querySelectorAll('[data-price-threshold]').forEach(input => {
+    state.priceDraft.thresholds[Number(input.dataset.priceThreshold)] = Number(input.value);
+  });
+}
+
+// The brackets the ladder produces, shown as they will appear in the filter — a ladder of
+// numbers is not obviously four named ranges until you see them.
+function renderPricePreview() {
+  const scale = normalizePriceScale(state.priceDraft);
+  document.getElementById('pricePreview').innerHTML = scale
+    ? priceBands(scale).map(b => `<span>${escapeHtml(b.label)}</span>`).join('')
+    : '';
+}
+
+function validatePriceForm() {
+  const draft = state.priceDraft;
+  const values = draft.thresholds;
+  let message = '';
+  if (!String(draft.unit || '').trim()) message = 'Satuan harga wajib diisi.';
+  else if (!values.length) message = 'Butuh minimal satu batas harga.';
+  else if (values.some(v => !Number.isFinite(v) || v <= 0)) message = 'Setiap batas harus angka lebih besar dari 0.';
+  else if (values.some((v, i) => i > 0 && v <= values[i - 1])) message = 'Batas harus urut dari kecil ke besar.';
+  else if (values.length > MAX_PRICE_THRESHOLDS) message = `Maksimal ${MAX_PRICE_THRESHOLDS} batas.`;
+  const hint = document.getElementById('priceHint');
+  hint.textContent = message;
+  hint.classList.toggle('error', !!message);
+  document.getElementById('savePrice').disabled = !!message;
+  return !message;
+}
 
 function openGroupsDialog() {
   // Edited as a working copy so Cancel is a real cancel.
@@ -2218,7 +2381,7 @@ document.getElementById('resetPopulation').addEventListener('click', () => {
 });
 document.getElementById('addPinButton').addEventListener('click', () => { setAddMode(true); document.getElementById('sidebar').classList.remove('open'); });
 document.getElementById('addComplexButton').addEventListener('click', () => {
-  state.complexDraft = { id: null, name: '', area: state.selectedArea || 'JGC', latlng: null, catalog: [], custom: {}, logo: '' };
+  state.complexDraft = { id: null, name: '', area: state.selectedArea || areaKeys()[0] || '', latlng: null, catalog: [], custom: {}, logo: '' };
   setAddMode(true, 'complex');
   document.getElementById('sidebar').classList.remove('open');
 });
@@ -2289,6 +2452,58 @@ document.getElementById('searchInput').addEventListener('input', e => {
   renderMap();                      // local filtering stays instant on every keystroke
   scheduleGeocode(state.query);     // the network part is debounced
 });
+document.getElementById('managePriceButton').addEventListener('click', () => {
+  openPriceDialog();
+  document.getElementById('sidebar').classList.remove('open');
+});
+document.getElementById('closePriceDialog').addEventListener('click', closePriceDialog);
+document.getElementById('cancelPrice').addEventListener('click', closePriceDialog);
+
+document.getElementById('priceEditor').addEventListener('input', () => {
+  syncPriceDraftFromForm();
+  renderPricePreview();
+  validatePriceForm();
+});
+document.getElementById('priceUnit').addEventListener('input', () => {
+  syncPriceDraftFromForm();
+  renderPricePreview();
+  validatePriceForm();
+});
+
+document.getElementById('priceEditor').addEventListener('click', event => {
+  const remove = event.target.closest('[data-price-remove]');
+  if (!remove) return;
+  syncPriceDraftFromForm();
+  state.priceDraft.thresholds.splice(Number(remove.dataset.priceRemove), 1);
+  renderPriceEditor();
+});
+
+document.getElementById('addPriceBand').addEventListener('click', () => {
+  syncPriceDraftFromForm();
+  const values = state.priceDraft.thresholds;
+  const last = values[values.length - 1];
+  // Seeded above the current top so the new row is already valid — a row that fails
+  // validation the moment it appears reads as a bug rather than as something to fill in.
+  values.push(Number.isFinite(last) && last > 0 ? round2(last * 2) : 1);
+  renderPriceEditor();
+});
+
+document.getElementById('resetPrice').addEventListener('click', () => {
+  state.priceDraft = defaultPriceScale();
+  document.getElementById('priceUnit').value = state.priceDraft.unit;
+  renderPriceEditor();
+});
+
+document.getElementById('priceForm').addEventListener('submit', event => {
+  event.preventDefault();
+  syncPriceDraftFromForm();
+  if (!validatePriceForm() || state.role !== 'admin') return;
+  state.priceScale = normalizePriceScale(state.priceDraft);
+  // Band ids are positional, so the old selection no longer means what it did.
+  state.filters.price.clear();
+  savePriceScale(); markDirty(); closePriceDialog(); renderControls(); renderMap();
+});
+
 document.getElementById('restoreHidden').addEventListener('click', restoreHiddenFeatures);
 document.getElementById('showAllDevelopers').addEventListener('click', () => { state.selectedArea = null; syncControls(); renderMap(); fitVisible({ animate: true }); });
 document.getElementById('fitMap').addEventListener('click', () => fitVisible({ animate: true }));

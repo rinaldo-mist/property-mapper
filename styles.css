@@ -166,6 +166,16 @@ body[data-role="viewer"] .admin-only { display: none !important; }
 .option-row { display: flex; gap: 8px; align-items: center; }
 .pin-dialog .group-editor input { margin-bottom: 0; min-height: 38px; background: white; }
 .add-group { display: inline-block; margin-top: 2px; }
+/* A threshold is one number, so each gets a compact cell rather than a full-width row —
+   eight of them stacked made the dialog taller than the viewport. */
+.price-unit { margin-top: 14px; }
+#priceEditor { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 9px; }
+.price-row { display: flex; align-items: flex-end; gap: 2px; }
+.price-row label { flex: 1; margin-bottom: 0; }
+.pin-dialog .price-row input { min-height: 38px; margin-bottom: 0; background: white; }
+/* The brackets the ladder above produces, so the numbers read as ranges while typing. */
+.price-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.price-preview span { border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; background: #fafbf9; color: var(--green); font-size: 12px; font-weight: 700; }
 
 .transit-field { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 13px; background: #fafbf9; }
 .transit-field > label { margin-bottom: 10px; }

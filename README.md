@@ -99,17 +99,19 @@ setiap grup muncul hanya bila datanya ada:
 | Bagian | Muncul bila |
 |---|---|
 | **Developer** | berkas memiliki folder kawasan |
-| **Range Harga** | ada perumahan dengan katalog unit |
+| **Range Harga** | mode Residential, dan berkas memiliki boundary |
 | **Populasi** | ada kawasan yang mencantumkan jumlah jiwa |
 | **Tipe Simpul** / **Operator** | ada titik Transportasi Umum |
 | **Fasilitas** | selalu, dari kategori yang ada di berkas |
-| **Tambah perumahan** | berkas memiliki boundary — perumahan wajib berada di dalamnya |
+| **Tambah perumahan** | mode Residential, dan berkas memiliki boundary — perumahan wajib berada di dalamnya |
 
 Karena itu dataset Industrial yang datar (tanpa folder kawasan) otomatis tampil tanpa
-daftar developer, tanpa Range Harga, dan tanpa Populasi — tanpa pengaturan tambahan.
+daftar kawasan dan tanpa Populasi — tanpa pengaturan tambahan.
 
-> Catatan: harga lahan industri biasanya dihitung per m², bukan miliar per unit seperti
-> perumahan. Grup **Range Harga** saat ini memakai skala residensial.
+**Perumahan hanya ada pada mode Residential.** Kawasan industri tidak memuat perumahan,
+jadi tombol **Tambah perumahan**, item **Tambah perumahan** pada klik kanan, dan grup
+filter **Range Harga** tidak muncul pada mode Industrial — bahkan setelah kawasan digambar.
+Ini ditentukan oleh `MODES[mode].complexes`, bukan oleh isi berkas.
 
 ### Menambah mode baru
 
@@ -134,7 +136,9 @@ Panel kiri berisi beberapa grup filter yang berdiri sendiri:
 
 - **Fasilitas** — School, Hospital, Showroom, SPBU, University, Gerbang Tol,
   Transportasi Umum, dan Perumahan.
-- **Range Harga** — diambil dari katalog unit setiap perumahan (≤ 1 M, 1–2 M, 2–3 M, > 3 M).
+- **Range Harga** — diambil dari katalog unit setiap perumahan, jadi **hanya pada mode
+  Residential**. Batasnya **diatur admin**; bawaannya ≤ 1 M, 1–2 M, 2–3 M, > 3 M. Lihat
+  **Mengatur range harga**.
 - **Populasi** — atribut kawasan (≤ 10rb, 10–30rb, 30–60rb, > 60rb).
 - **Tipe Simpul** dan **Operator** — muncul hanya bila ada titik Transportasi Umum.
 - Grup buatan sendiri melalui **Kelola kategori**.
@@ -242,11 +246,43 @@ dari awal. Jadi dataset Industrial bisa dibangun sepenuhnya di dalam aplikasi.
 
 ## Perumahan dan populasi
 
+### Mengatur range harga
+
+Hanya admin. Tekan **Atur range harga** pada panel kiri — tombolnya memuat satuan yang
+sedang dipakai, misalnya *Atur range harga (M)*.
+
+Skala disimpan per mode. Karena perumahan hanya ada pada Residential, skala Industrial
+tersimpan tetapi belum dipakai oleh filter apa pun — lihat catatan di akhir berkas ini.
+
+Yang diisi bukan daftar rentang, melainkan **satuan** dan **daftar batas**. Rentang
+filternya diturunkan dari batas-batas itu, sehingga tidak mungkin saling tumpang tindih
+atau menyisakan celah:
+
+| Batas | Rentang yang dihasilkan |
+|---|---|
+| 1, 2, 3 | ≤ 1 · 1–2 · 2–3 · > 3 |
+| 1,5 / 3 / 7 / 12 | ≤ 1,5 · 1,5–3 · 3–7 · 7–12 · > 12 |
+
+- Pratinjau di bawah daftar menampilkan rentang yang akan muncul di filter, langsung saat
+  mengetik.
+- Nilai yang **tepat berada di batas** masuk ke rentang bawah — harga 2 M masuk ke
+  “1 – 2 M”, bukan ke “2 – 3 M”.
+- Batas harus urut dari kecil ke besar dan lebih besar dari nol; maksimal delapan batas.
+- **Kembalikan bawaan** mengembalikan skala bawaan mode yang sedang dibuka.
+- Satuan ikut dipakai pada ringkasan harga di popup perumahan dan pada judul kolom katalog,
+  sehingga angka yang diketik dan angka yang difilter selalu dalam satuan yang sama.
+
+Menyimpan skala baru **mengosongkan pilihan Range Harga** yang sedang aktif, karena rentang
+yang dipilih sebelumnya sudah tidak berarti sama.
+
+Skala disimpan per mode, ikut terkirim ke pengunjung lain seperti perubahan admin lainnya,
+dan ikut tertulis ke berkas KMZ — jadi berkas hasil ekspor membawa skalanya sendiri.
+
 ### Menambah perumahan
 
 1. Tekan **＋ Tambah perumahan** pada panel kiri.
 2. Klik lokasi di peta. **Lokasi harus berada di dalam boundary salah satu kawasan** — klik di luar boundary akan ditolak dan mode pemilihan tetap aktif. Developer terisi otomatis mengikuti kawasan yang terpilih.
-3. Isi nama dan katalog unit (LT, LB, Harga dalam miliar). Minimal satu baris katalog harus terisi lengkap dan lebih besar dari nol sebelum dapat disimpan.
+3. Isi nama dan katalog unit (LT, LB, Harga). Judul kolom harga menyebut satuan yang sedang berlaku untuk mode ini — lihat **Mengatur range harga**. Minimal satu baris katalog harus terisi lengkap dan lebih besar dari nol sebelum dapat disimpan.
 
 Perumahan muncul sebagai pin hijau, ikut tersaring pada Range Harga sesuai rentang katalognya, dan dapat diubah lewat **Edit perumahan** pada popup pin.
 
@@ -323,3 +359,16 @@ Jika platform hanya menerima potongan HTML (misalnya beberapa page builder), ung
 ## Dependensi internet
 
 Halaman memakai Leaflet, JSZip, Google Fonts, dan tile OpenStreetMap dari CDN. Karena itu, koneksi internet diperlukan saat halaman dibuka.
+
+## Catatan terbuka
+
+**Fasilitas masih terpisah per mode.** Saat ini setiap mode membaca berkas KMZ-nya sendiri
+dan menyimpan pin manual, penghapusan, serta kategori kustomnya sendiri. Artinya satu
+fasilitas yang diubah pada mode Residential **tidak** ikut berubah pada mode Industrial.
+Model yang diinginkan — satu kumpulan fasilitas yang dipakai bersama kedua mode, sementara
+yang berbeda hanya kawasan dan perumahan — belum diterapkan; perubahannya menyentuh
+sumber data fasilitas, kunci penyimpanan, dan bentuk state di server.
+
+**Skala harga Industrial belum terpakai.** Skala per mode tersimpan dan dapat diedit, tetapi
+karena Range Harga mengikuti katalog perumahan, skala Industrial tidak menyaring apa pun
+sampai ada objek berharga di mode tersebut (misalnya harga lahan pada kawasan).
