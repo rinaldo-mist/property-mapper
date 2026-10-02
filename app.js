@@ -207,6 +207,7 @@ const GROUPS_KEY = 'facility-map-groups-v1';
 const AREAS_KEY = 'facility-map-areas-v1';
 const REMOVED_KEY = 'facility-map-removed-v1';
 const PRICE_KEY = 'facility-map-price-v1';
+const REMOVED_AREAS_KEY = 'facility-map-removed-areas-v1';
 const MODE_KEY = 'facility-map-mode-v1';
 
 function storeKey(base) { return `${base}:${state.mode}`; }
@@ -219,6 +220,8 @@ const state = {
   areaDraft: null,            // in-progress drawing / editing
   priceScale: null,           // { unit, thresholds } for this mode; null = mode default
   priceDraft: null,           // working copy edited by the price dialog
+  removedAreas: [],           // keys of imported areas an admin deleted
+  hiddenAreas: [],            // what those areas were, so Pulihkan can put them back
   removedFeatures: [],        // ids of imported facilities an admin deleted
   hiddenFeatures: [],         // those facilities themselves, so Pulihkan needs no re-parse
   areaPopulation: {}, customGroups: [],
@@ -257,6 +260,8 @@ const draftLayer = L.layerGroup().addTo(map);
 // because a detached node no longer knows where it came from.
 const featureNodes = new Map();      // feature id -> node
 const detachedNodes = new Map();     // feature id -> { node, parent }, removed by an export
+const areaNodes = new Map();         // area key -> its <Folder>, for the same reason
+const detachedAreaDocs = new Map();  // area key -> { node, parent } boundary doc an export removed
 
 // Everything this app writes into the KML lives under one root folder and one set of
 // `pm:`-prefixed ExtendedData names, so an export can remove its own previous output
@@ -355,6 +360,9 @@ function discoverAreas(rootDocument) {
     const key = textOf(folder, 'name');
     if (!key || found[key]) return;
     found[key] = { label: boundaryNameOf(folder) || key, code: shortCode(key), source: 'kmz' };
+    // Kept so deleting an area can drop its boundary from the exported file, the way
+    // deleting a facility drops its placemark.
+    areaNodes.set(key, folder);
   };
   const walk = node => directChildren(node, 'Folder').forEach(folder => {
     if (textOf(folder, 'name') === AREA_CONTAINER) directChildren(folder, 'Folder').forEach(register);
@@ -713,6 +721,86 @@ function loadPriceScale() {
 
 function savePriceScale() { localStorage.setItem(storeKey(PRICE_KEY), JSON.stringify(priceScale())); }
 
+function loadRemovedAreas() {
+  const saved = readStored(storeKey(REMOVED_AREAS_KEY), null);
+  if (saved === null) { saveRemovedAreas(); return; }
+  state.removedAreas = Array.isArray(saved) ? saved.filter(key => typeof key === 'string') : [];
+}
+
+function saveRemovedAreas() { localStorage.setItem(storeKey(REMOVED_AREAS_KEY), JSON.stringify(state.removedAreas)); }
+
+// Same reasoning as applyRemovedFeatures: an imported area is rebuilt from the KMZ on every
+// load, so the deletion has to be remembered and re-applied rather than simply done once.
+// Runs after applyCustomAreas, so deleting an edited import wins over the edit.
+function applyRemovedAreas() {
+  if (!state.removedAreas.length) return;
+  const removed = new Set(state.removedAreas);
+  areaKeys().filter(key => removed.has(key)).forEach(key => {
+    state.hiddenAreas.push({
+      key,
+      meta: state.areas[key],
+      boundary: state.boundaries.find(b => b.area === key) || null,
+      custom: state.customAreas.find(a => a.key === key) || null
+    });
+    delete state.areas[key];
+  });
+  state.boundaries = state.boundaries.filter(b => !removed.has(b.area));
+}
+
+/**
+ * Deletes an area of either origin. One authored here is simply dropped, exactly as before.
+ * One that came from the KMZ cannot be: its key is remembered, re-applied after every parse,
+ * and written into the exported file so a re-import does not resurrect it.
+ *
+ * The facilities inside it are deliberately left alone. They are real places that happen to
+ * sit in that boundary, and taking them with it would destroy perumahan and manual pins that
+ * have no undo of their own. They keep their key, so a restore puts them back under it.
+ */
+function deleteArea(key) {
+  if (state.role !== 'admin') return;
+  const meta = state.areas[key];
+  if (!meta) return;
+  const term = areaTerm().toLowerCase();
+  const inside = allFeatures().filter(f => f.area === key).length;
+  const note = inside ? ` ${inside} fasilitas di dalamnya tetap ada, tanpa ${term}.` : '';
+  if (!confirm(`Hapus ${term} "${areaName(key)}"?${note}`)) return;
+
+  state.hiddenAreas.push({
+    key, meta,
+    boundary: state.boundaries.find(b => b.area === key) || null,
+    custom: state.customAreas.find(a => a.key === key) || null
+  });
+  if (meta.source === 'app') {
+    removeCustomArea(key);
+  } else if (!state.removedAreas.includes(key)) {
+    // The edit of an imported area is kept, not dropped: a restore should return the
+    // boundary as it was last left, not as the KMZ first supplied it.
+    state.removedAreas.push(key);
+    saveRemovedAreas();
+  }
+  delete state.areas[key];
+  state.boundaries = state.boundaries.filter(b => b.area !== key);
+  if (state.selectedArea === key) state.selectedArea = null;
+  state.areaDraft = null;
+  closeAreaMenu();
+  markDirty(); renderAreaDraft(); renderControls(); renderMap();
+}
+
+function restoreHiddenAreas() {
+  if (!state.hiddenAreas.length) return;
+  state.hiddenAreas.forEach(entry => {
+    state.areas[entry.key] = entry.meta;
+    if (entry.boundary) state.boundaries.push(entry.boundary);
+    // An authored area lives only in customAreas, so putting it back there is the restore.
+    if (entry.meta.source === 'app' && entry.custom) upsertCustomArea(entry.custom);
+  });
+  state.hiddenAreas = [];
+  state.removedAreas = [];
+  saveRemovedAreas();
+  detachedAreaDocs.forEach(({ node, parent }) => parent.appendChild(node));
+  detachedAreaDocs.clear();
+}
+
 function loadRemovedFeatures() {
   const saved = readStored(storeKey(REMOVED_KEY), null);
   if (saved === null) { saveRemovedFeatures(); return; }
@@ -756,27 +844,38 @@ function deleteFeature(id) {
   markDirty(); renderControls(); renderMap();
 }
 
+// Everything the admin deleted, in one go: the button says Pulihkan, not Pulihkan fasilitas.
+function restoreDeleted() {
+  // Guarded like deleteFeature is: the restore button is hidden from viewers by CSS alone,
+  // and un-deleting locally would leave that viewer's map disagreeing with everyone else's.
+  if (state.role !== 'admin') return;
+  if (!state.hiddenFeatures.length && !state.hiddenAreas.length) return;
+  restoreHiddenAreas();
+  restoreHiddenFeatures();
+  applyCustomAreas();
+  markDirty(); renderControls(); renderMap();
+}
+
 // Only imported facilities come back this way. A manual pin or a perumahan is gone for
 // good, exactly as its own delete button already behaved.
 function restoreHiddenFeatures() {
-  // Guarded like deleteFeature is: the restore button is hidden from viewers by CSS alone,
-  // and un-deleting locally would leave that viewer's map disagreeing with everyone else's.
-  if (state.role !== 'admin' || !state.hiddenFeatures.length) return;
+  if (!state.hiddenFeatures.length) return;
   state.features = [...state.features, ...state.hiddenFeatures];
   state.hiddenFeatures = [];
   state.removedFeatures = [];
   saveRemovedFeatures();
   detachedNodes.forEach(({ node, parent }) => parent.appendChild(node));
   detachedNodes.clear();
-  markDirty(); renderControls(); renderMap();
 }
 
 // Counted from what can actually be restored, not from the stored ids: once an export has
 // dropped the placemarks a re-import has nothing left to bring back.
 function syncHiddenNote() {
-  const count = state.hiddenFeatures.length;
-  document.getElementById('hiddenNote').classList.toggle('hidden', count === 0);
-  document.getElementById('hiddenCount').textContent = `${count} fasilitas KMZ dihapus`;
+  const parts = [];
+  if (state.hiddenFeatures.length) parts.push(`${state.hiddenFeatures.length} fasilitas`);
+  if (state.hiddenAreas.length) parts.push(`${state.hiddenAreas.length} ${areaTerm().toLowerCase()}`);
+  document.getElementById('hiddenNote').classList.toggle('hidden', !parts.length);
+  document.getElementById('hiddenCount').textContent = `${parts.join(' · ')} dihapus`;
 }
 
 function loadComplexes() {
@@ -1084,8 +1183,10 @@ function resetDataset({ preserveFilters = false } = {}) {
   state.features = []; state.boundaries = []; state.manualFeatures = []; state.complexes = [];
   state.areaPopulation = {}; state.kmzPopulation = {}; state.customGroups = [];
   state.removedFeatures = []; state.hiddenFeatures = [];
+  state.removedAreas = []; state.hiddenAreas = [];
   state.priceScale = defaultPriceScale();
   featureNodes.clear(); detachedNodes.clear();
+  areaNodes.clear(); detachedAreaDocs.clear();
   state.kmlDoc = null; state.kmlName = 'doc.kml'; state.kmzExtras = {};
   // A background refresh must not yank the filters or the selected developer out from
   // under someone reading the map; a deliberate mode switch still resets them.
@@ -1105,10 +1206,11 @@ async function restoreAuthoredState(mode) {
   const served = await fetchServerState(mode);
   if (!applyServerState(served)) {
     loadManualFeatures(); loadComplexes(); loadAreaPopulation(); loadCustomGroups();
-    loadCustomAreas(); loadRemovedFeatures(); loadPriceScale();
+    loadCustomAreas(); loadRemovedFeatures(); loadRemovedAreas(); loadPriceScale();
   }
   // Folded in after both sources, so an authored area wins over the imported one.
   applyCustomAreas();
+  applyRemovedAreas();
   applyRemovedFeatures();
 }
 
@@ -1145,6 +1247,10 @@ async function loadData(mode = state.mode, { preserveView = false } = {}) {
     // Read after the walk so an exported value wins over the name-derived Population folder.
     const rootOwn = pmValues(rootDocument);
     if (rootOwn.groups) state.customGroups = parseJsonOr(rootOwn.groups, []);
+    if (rootOwn.removedAreas) {
+      const saved = parseJsonOr(rootOwn.removedAreas, []);
+      if (Array.isArray(saved)) state.removedAreas = saved.filter(key => typeof key === 'string');
+    }
     if (rootOwn.price) {
       const parsed = normalizePriceScale(parseJsonOr(rootOwn.price, null));
       if (parsed) state.priceScale = parsed;
@@ -1420,9 +1526,11 @@ function openAreaDialog() {
     ? `Ubah ${areaTerm().toLowerCase()}` : `${areaTerm()} baru`;
   document.getElementById('areaName').value = draft.label || '';
   document.getElementById('areaHint').textContent = `${draft.latlngs.length} sudut.`;
-  // Only an app-authored area can be deleted; an imported one would return on reload.
-  const isApp = draft.key && state.areas[draft.key] && state.areas[draft.key].source === 'app';
-  document.getElementById('deleteArea').classList.toggle('hidden', !isApp);
+  // Offered for an imported area too: the deletion is remembered and re-applied after every
+  // parse, so it sticks where it once could not.
+  const deleteButton = document.getElementById('deleteArea');
+  deleteButton.textContent = `Hapus ${areaTerm().toLowerCase()}`;
+  deleteButton.classList.toggle('hidden', !draft.key);
   document.getElementById('areaDialog').showModal();
 }
 
@@ -1463,12 +1571,13 @@ function openAreaMenu(area, originalEvent) {
     `<div class="area-menu-title">${escapeHtml(areaName(area))}</div>` +
     (canHaveComplexes() ? `<button type="button" role="menuitem" data-menu="complex">＋ Tambah perumahan</button>` : '') +
     `<button type="button" role="menuitem" data-menu="population">Set populasi</button>` +
-    `<button type="button" role="menuitem" data-menu="edit-area">Ubah batas ${escapeHtml(areaTerm().toLowerCase())}</button>`;
+    `<button type="button" role="menuitem" data-menu="edit-area">Ubah batas ${escapeHtml(areaTerm().toLowerCase())}</button>` +
+    `<button type="button" role="menuitem" class="menu-danger" data-menu="delete-area">Hapus ${escapeHtml(areaTerm().toLowerCase())}</button>`;
   menu.dataset.area = area;
   const rect = document.getElementById('map').getBoundingClientRect();
   // Clamped so the menu never opens past the map's right/bottom edge.
   const x = Math.min(originalEvent.clientX - rect.left, rect.width - 190);
-  const y = Math.min(originalEvent.clientY - rect.top, rect.height - 110);
+  const y = Math.min(originalEvent.clientY - rect.top, rect.height - 190);
   menu.style.left = `${Math.max(8, x)}px`;
   menu.style.top = `${Math.max(8, y)}px`;
   menu.classList.remove('hidden');
@@ -1661,6 +1770,7 @@ function collectState() {
     customGroups: state.customGroups,
     customAreas: state.customAreas,
     removedFeatures: state.removedFeatures,
+    removedAreas: state.removedAreas,
     priceScale: priceScale()
   };
 }
@@ -1680,6 +1790,9 @@ function applyServerState(data) {
   if (Array.isArray(data.customAreas)) state.customAreas = data.customAreas;
   const price = normalizePriceScale(data.priceScale);
   if (price) state.priceScale = price;
+  if (Array.isArray(data.removedAreas)) {
+    state.removedAreas = data.removedAreas.filter(key => typeof key === 'string');
+  }
   if (Array.isArray(data.removedFeatures)) {
     state.removedFeatures = data.removedFeatures.filter(id => typeof id === 'string');
   }
@@ -1940,10 +2053,22 @@ function buildExportDocument() {
   setPmData(doc, root, {
     groups: JSON.stringify(state.customGroups),
     population: JSON.stringify(state.areaPopulation),
-    price: JSON.stringify(priceScale())
+    price: JSON.stringify(priceScale()),
+    removedAreas: JSON.stringify(state.removedAreas)
   });
 
   writeAuthoredAreas(doc, root);
+
+  // A deleted area keeps its folder — the facilities inside it are not deleted with it —
+  // but loses the boundary that draws it. The key also rides along in pm:removedAreas above,
+  // because the folder alone is still enough for discoverAreas to register the area again.
+  state.removedAreas.forEach(key => {
+    const folder = areaNodes.get(key);
+    if (!folder) return;
+    directChildren(folder, 'Document')
+      .filter(d => /^Boundary/i.test(textOf(d, 'name')))
+      .forEach(d => { detachedAreaDocs.set(key, { node: d, parent: folder }); folder.removeChild(d); });
+  });
 
   // A deleted facility must not return the next time this KMZ is loaded, so its original
   // placemark leaves the document as well. Parent kept, so Pulihkan can re-attach it
@@ -2226,6 +2351,7 @@ document.getElementById('areaMenu').addEventListener('click', event => {
   const area = document.getElementById('areaMenu').dataset.area;
   closeAreaMenu();
   if (btn.dataset.menu === 'complex') openComplexDialog({ area });
+  else if (btn.dataset.menu === 'delete-area') deleteArea(area);
   else if (btn.dataset.menu === 'edit-area') startAreaEdit(area);
   else openPopulationDialog(area);
 });
@@ -2504,7 +2630,7 @@ document.getElementById('priceForm').addEventListener('submit', event => {
   savePriceScale(); markDirty(); closePriceDialog(); renderControls(); renderMap();
 });
 
-document.getElementById('restoreHidden').addEventListener('click', restoreHiddenFeatures);
+document.getElementById('restoreHidden').addEventListener('click', restoreDeleted);
 document.getElementById('showAllDevelopers').addEventListener('click', () => { state.selectedArea = null; syncControls(); renderMap(); fitVisible({ animate: true }); });
 document.getElementById('fitMap').addEventListener('click', () => fitVisible({ animate: true }));
 document.getElementById('authButton').addEventListener('click', async () => {
@@ -2548,12 +2674,9 @@ document.getElementById('areaForm').addEventListener('submit', event => {
 document.getElementById('deleteArea').addEventListener('click', () => {
   const draft = state.areaDraft;
   if (!draft || !draft.key) return;
-  if (!confirm(`Hapus ${areaTerm().toLowerCase()} ini?`)) return;
-  removeCustomArea(draft.key);
-  delete state.areas[draft.key];
-  state.boundaries = state.boundaries.filter(b => b.area !== draft.key);
-  state.areaDraft = null;
-  renderAreaDraft(); closeAreaDialog(); renderControls(); renderMap();
+  const key = draft.key;
+  closeAreaDialog();
+  deleteArea(key);
 });
 
 document.getElementById('closeLoginDialog').addEventListener('click', () => document.getElementById('loginDialog').close());

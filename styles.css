@@ -143,6 +143,8 @@ body[data-role="viewer"] .admin-only { display: none !important; }
 .area-menu-title { font: 700 10px Manrope; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 7px 9px 5px; }
 .area-menu button { border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 8px; font-size: 13px; color: var(--ink); }
 .area-menu button:hover { background: #f2f5f1; color: var(--green); }
+.area-menu .menu-danger { color: #8d3a3a; }
+.area-menu .menu-danger:hover { background: #fbeced; }
 
 .complex-dialog form { max-width: 520px; }
 .latlng-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 0 11px; background: #fafbf9; }

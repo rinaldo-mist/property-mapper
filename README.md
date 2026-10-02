@@ -67,8 +67,8 @@ kembali setelah berkas dibaca. Akibatnya:
   lain seperti perubahan lain yang dilakukan admin.
 - Saat **Simpan ke KMZ**, placemark aslinya ikut dikeluarkan dari berkas. Berkas hasil
   ekspor benar-benar tidak lagi memuat fasilitas tersebut.
-- Selama belum diekspor, panel kiri menampilkan **"N fasilitas KMZ dihapus · Pulihkan"**.
-  **Pulihkan** mengembalikan semuanya sekaligus.
+- Selama belum diekspor, panel kiri menampilkan **"N fasilitas · M developer dihapus ·
+  Pulihkan"**. **Pulihkan** mengembalikan semuanya sekaligus — fasilitas maupun kawasan.
 
 Pin manual dan perumahan tidak punya mekanisme ini — keduanya memang milik aplikasi,
 sehingga menghapusnya langsung hilang, persis seperti tombol hapus di dalam dialognya.
@@ -228,9 +228,34 @@ berisi ratusan sudut, dan menampilkan semuanya sekaligus membuat peta berat. Ges
 perbesar peta untuk memunculkannya kembali. Titik bayangan juga disembunyikan pada sisi
 yang terlalu pendek di layar — perbesar peta dan titiknya muncul.
 
-Kawasan hasil gambar dapat dihapus. Kawasan dari KMZ yang diubah **tidak** dapat dihapus,
-karena berkas KMZ akan menyediakannya lagi saat halaman dimuat ulang; yang tersimpan hanya
-perubahan batasnya.
+### Menghapus kawasan
+
+Hanya admin. Dua jalan, keduanya sama:
+
+- **Klik kanan di dalam kawasan** → **Hapus developer** (atau *kawasan* pada Industrial).
+- Atau saat mengubah batas: **Selesai** → **Hapus developer** pada dialog.
+
+Berlaku untuk kawasan hasil gambar **maupun** kawasan dari KMZ. Keduanya berbeda dalam cara
+penyimpanannya, tetapi tidak dalam cara pemakaiannya:
+
+| Asal | Yang terjadi |
+|---|---|
+| Digambar di aplikasi | dibuang dari daftar kawasan buatan |
+| Dari KMZ | kuncinya **diingat** dan diterapkan lagi setiap berkas dibaca, jadi penghapusan tetap berlaku setelah muat ulang |
+
+**Fasilitas di dalamnya tidak ikut terhapus.** Sebuah sekolah tetap sebuah sekolah meski
+kawasannya tidak lagi ditampilkan — dan ikut menghapusnya akan memusnahkan perumahan serta
+pin manual yang tidak punya pembatalan sendiri. Titik-titik itu tetap tampil dan tetap
+menyandang nama kawasan lamanya; hapus satu per satu lewat popup bila memang tidak diinginkan.
+
+Saat **Simpan ke KMZ**, folder kawasannya tetap ada (karena berisi fasilitas tadi) tetapi
+dokumen boundary-nya dikeluarkan, dan kuncinya ditulis pada `pm:removedAreas` di akar
+dokumen — keduanya diperlukan, karena folder saja sudah cukup membuat kawasan terbaca lagi
+saat berkas diimpor ulang.
+
+Penghapusan kawasan ikut terhitung pada catatan **Pulihkan** di panel kiri. Kawasan dari KMZ
+yang sempat **diubah batasnya** akan kembali dengan batas hasil ubahan itu, bukan batas asli
+dari berkas.
 
 ### Ekspor
 
